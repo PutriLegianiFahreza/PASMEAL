@@ -4,6 +4,6 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const upload = require('../middlewares/upload');
 const kiosController = require('../controllers/kiosController');
 
-router.post('/', authMiddleware, upload.single('foto'), kiosController.createKios);
+router.post('/', authMiddleware, kiosController.createKios);
 
 module.exports = router;

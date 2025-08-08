@@ -5,9 +5,10 @@ const upload = require('../middlewares/upload');
 const menuController = require('../controllers/menuController');
 
 router.get('/', authMiddleware, menuController.getAllMenu);
-router.post('/', authMiddleware, upload.single('foto'), menuController.addMenu);
 router.get('/:id', authMiddleware, menuController.getMenuById);
-router.put('/:id', authMiddleware, upload.single('foto'), menuController.updateMenu);
 router.delete('/:id', authMiddleware, menuController.deleteMenu);
+router.post('/', authMiddleware, upload.single('foto_menu'), menuController.addMenu);
+router.put('/:id', authMiddleware, upload.single('foto_menu'), menuController.updateMenu);
+
 
 module.exports = router;
