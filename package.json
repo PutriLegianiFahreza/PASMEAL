@@ -4,6 +4,7 @@
     "dev": "nodemon index.js"
   },
   "dependencies": {
+    "iconv-lite": "0.6.3",
     "@whiskeysockets/baileys": "^6.6.0",
     "baileys": "^6.7.18",
     "bcrypt": "^6.0.0",
