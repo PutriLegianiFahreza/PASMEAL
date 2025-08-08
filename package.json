@@ -1,7 +1,8 @@
 {
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "render-build": "./render-build.sh"
   },
   "dependencies": {
     "pg-protocol": "^1.6.0",
