@@ -3,11 +3,11 @@ set -e
 
 echo "==== Cleaning node_modules and cache ===="
 rm -rf node_modules
-rm -rf ~/.npm
-rm -rf ~/.cache
+rm -rf package-lock.json
+npm cache clean --force
 
 echo "==== Installing dependencies ===="
-npm ci --ignore-scripts
+npm install
 
 echo "==== Rebuilding native modules ===="
 npm rebuild
