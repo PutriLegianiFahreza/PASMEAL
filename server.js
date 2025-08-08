@@ -5,6 +5,7 @@ const authRoutes = require('./routes/authRoutes');
 const { connectToWhatsApp } = require('./services/whatsapp')
 const kiosRoutes = require('./routes/kiosRoutes');
 const menuRoutes = require('./routes/menuRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
 
 // Load environment variables
 dotenv.config();
@@ -20,6 +21,7 @@ app.use(express.json());
 app.use('/api', authRoutes);
 app.use('/api/kios', kiosRoutes);
 app.use('/api/menu', menuRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // Root check
 app.get('/', (req, res) => {
