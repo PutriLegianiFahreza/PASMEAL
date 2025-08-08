@@ -1,5 +1,5 @@
 const {
-  makeWASocket,
+  default: makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
@@ -8,20 +8,25 @@ const {
 } = require('@whiskeysockets/baileys');
 
 const P = require('pino');
+const fs = require('fs');
 
 // Inisialisasi store untuk menyimpan data session
 const store = makeInMemoryStore({
-  logger: P({ level: 'fatal' }).child({ stream: 'store' }),
+  logger: P({ level: 'silent' }) // matiin log biar gak spam
 });
 
-store.readFromFile('./baileys_store.json');
+// Load store dari file kalau ada
+const STORE_FILE = './baileys_store.json';
+if (fs.existsSync(STORE_FILE)) {
+  store.readFromFile(STORE_FILE);
+}
 setInterval(() => {
-  store.writeToFile('./baileys_store.json');
+  store.writeToFile(STORE_FILE);
 }, 10_000);
 
-let globalSock; // Simpan instance WhatsApp socket
+let globalSock; // Simpan instance socket WA
 
-// Fungsi utama untuk menghubungkan ke WhatsApp
+// Fungsi utama konek ke WhatsApp
 const connectToWhatsApp = async () => {
   const { state, saveCreds } = await useMultiFileAuthState('./auth');
   const { version } = await fetchLatestBaileysVersion();
@@ -30,8 +35,8 @@ const connectToWhatsApp = async () => {
     version,
     auth: state,
     printQRInTerminal: true,
-    logger: P({ level: 'fatal' }),
-    browser: Browsers.macOS('PasMeal'),
+    logger: P({ level: 'silent' }),
+    browser: Browsers.macOS('PasMeal')
   });
 
   globalSock = sock;
@@ -41,9 +46,11 @@ const connectToWhatsApp = async () => {
 
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect } = update;
+
     if (connection === 'close') {
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log('🔁 Koneksi terputus. Coba sambung ulang:', shouldReconnect);
+      const shouldReconnect =
+        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+      console.log('🔌 Koneksi terputus. Reconnect:', shouldReconnect);
       if (shouldReconnect) {
         connectToWhatsApp();
       }
@@ -55,7 +62,7 @@ const connectToWhatsApp = async () => {
   return sock;
 };
 
-// Fungsi bantu kirim pesan WA biasa
+// Kirim pesan teks biasa
 const sendWaMessage = async (phoneNumber, message) => {
   if (!globalSock) {
     throw new Error('❌ WhatsApp belum terhubung.');
@@ -64,18 +71,18 @@ const sendWaMessage = async (phoneNumber, message) => {
   await globalSock.sendMessage(jid, { text: message });
 };
 
-// Fungsi bantu kirim pesan OTP ke nomor tertentu
+// Kirim pesan OTP
 const sendOtpMessage = async (phoneNumber, otpCode) => {
   const message = `🔐 Kode OTP kamu: *${otpCode}*\nJangan bagikan ke siapa pun ya!`;
   await sendWaMessage(phoneNumber, message);
 };
 
-// Fungsi untuk dapatkan koneksi WA dari file lain
+// Getter socket
 const getWASocket = () => globalSock;
 
 module.exports = {
   connectToWhatsApp,
   sendWaMessage,
   sendOtpMessage,
-  getWASocket,
+  getWASocket
 };
