@@ -3,6 +3,7 @@ const router = express.Router();
 const authMiddleware = require('../middlewares/authMiddleware');
 const upload = require('../middlewares/upload');
 const kiosController = require('../controllers/kiosController');
+const menuController = require('../controllers/menuController'); // ⬅ ini yang kurang
 
 // Buat kios baru (hanya penjual)
 router.post('/', authMiddleware, kiosController.createKios);
