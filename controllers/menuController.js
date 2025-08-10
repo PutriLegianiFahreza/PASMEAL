@@ -19,14 +19,23 @@ const getAllMenu = async (req, res) => {
 // Tambah menu
 const addMenu = async (req, res) => {
   const penjual_id = req.user.id;
-  const { nama_menu, deskripsi, harga, estimasi_waktu } = req.body;
+  const { nama_menu, deskripsi, harga, estimasi_waktu, status_tersedia } = req.body;
   const foto_menu = req.file ? req.file.filename : null;
 
   try {
     const result = await pool.query(
-      `INSERT INTO menu (nama_menu, deskripsi, harga, foto_menu, penjual_id, estimasi_waktu)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [nama_menu, deskripsi, harga, foto_menu, penjual_id, estimasi_waktu]
+      `INSERT INTO menu 
+       (nama_menu, deskripsi, harga, foto_menu, penjual_id, estimasi_waktu, status_tersedia)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [
+        nama_menu,
+        deskripsi,
+        harga,
+        foto_menu,
+        penjual_id,
+        estimasi_waktu,
+        status_tersedia !== undefined ? status_tersedia : true // default true
+      ]
     );
 
     res.status(201).json({
@@ -43,7 +52,7 @@ const addMenu = async (req, res) => {
 const updateMenu = async (req, res) => {
   const penjualId = req.user.id;
   const menuId = req.params.id;
-  const { nama_menu, harga, deskripsi, estimasi_waktu } = req.body;
+  const { nama_menu, harga, deskripsi, estimasi_waktu, status_tersedia } = req.body;
   const foto_menu = req.file ? req.file.filename : null;
 
   try {
@@ -58,9 +67,23 @@ const updateMenu = async (req, res) => {
 
     const updatedMenu = await pool.query(
       `UPDATE menu 
-       SET nama_menu = $1, harga = $2, deskripsi = $3, foto_menu = COALESCE($4, foto_menu), estimasi_waktu = $5
-       WHERE id = $6 AND penjual_id = $7 RETURNING *`,
-      [nama_menu, harga, deskripsi, foto_menu, estimasi_waktu, menuId, penjualId]
+       SET nama_menu = $1, 
+           harga = $2, 
+           deskripsi = $3, 
+           foto_menu = COALESCE($4, foto_menu), 
+           estimasi_waktu = $5,
+           status_tersedia = $6
+       WHERE id = $7 AND penjual_id = $8 RETURNING *`,
+      [
+        nama_menu,
+        harga,
+        deskripsi,
+        foto_menu,
+        estimasi_waktu,
+        status_tersedia !== undefined ? status_tersedia : currentMenu.rows[0].status_tersedia,
+        menuId,
+        penjualId
+      ]
     );
 
     res.status(200).json({
@@ -113,10 +136,61 @@ const deleteMenu = async (req, res) => {
   }
 };
 
+// Ambil 10 menu terbaru
+const getNewMenus = async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM menu ORDER BY created_at DESC LIMIT 10'
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Cari menu berdasarkan nama (untuk pembeli)
+const searchMenus = async (req, res) => {
+  const { query } = req.query;
+  if (!query) return res.status(400).json({ message: 'Query pencarian wajib diisi' });
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM menu WHERE nama_menu ILIKE $1',
+      [`%${query}%`]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Cari menu berdasarkan nama di kios tertentu
+const searchMenusByKios = async (req, res) => {
+  const { query } = req.query;
+  const kiosId = req.params.id;
+
+  if (!query) {
+    return res.status(400).json({ message: 'Query pencarian wajib diisi' });
+  }
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM menu WHERE kios_id = $1 AND nama_menu ILIKE $2',
+      [kiosId, `%${query}%`]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 module.exports = {
   getAllMenu,
   addMenu,
   getMenuById,
   updateMenu,
   deleteMenu,
+  getNewMenus,
+  searchMenus,
+  searchMenusByKios
 };

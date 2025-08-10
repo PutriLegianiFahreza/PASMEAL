@@ -3,19 +3,14 @@ const {
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
-  makeInMemoryStore,
   Browsers
 } = require('@whiskeysockets/baileys');
-
 const P = require('pino');
 const fs = require('fs');
 
-// Inisialisasi store untuk menyimpan data session
-const store = makeInMemoryStore({
-  logger: P({ level: 'silent' }) // matiin log biar gak spam
-});
+const { makeInMemoryStore } = require('@whiskeysockets/baileys');
+const store = makeInMemoryStore({ logger: P({ level: 'silent' }) });
 
-// Load store dari file kalau ada
 const STORE_FILE = './baileys_store.json';
 if (fs.existsSync(STORE_FILE)) {
   store.readFromFile(STORE_FILE);
@@ -23,61 +18,85 @@ if (fs.existsSync(STORE_FILE)) {
 setInterval(() => {
   store.writeToFile(STORE_FILE);
 }, 10_000);
+process.on('exit', () => {
+  store.writeToFile(STORE_FILE);
+});
 
-let globalSock; // Simpan instance socket WA
+let globalSock;
+let waReady = false; // status koneksi WA
 
-// Fungsi utama konek ke WhatsApp
 const connectToWhatsApp = async () => {
-  const { state, saveCreds } = await useMultiFileAuthState('./auth');
-  const { version } = await fetchLatestBaileysVersion();
+  try {
+    const { state, saveCreds } = await useMultiFileAuthState('./auth');
+    const { version } = await fetchLatestBaileysVersion();
 
-  const sock = makeWASocket({
-    version,
-    auth: state,
-    printQRInTerminal: true,
-    logger: P({ level: 'silent' }),
-    browser: Browsers.macOS('PasMeal')
-  });
+    const sock = makeWASocket({
+      version,
+      auth: state,
+      logger: P({ level: 'silent' }),
+      browser: Browsers.macOS('PasMeal'),
+      keepAliveIntervalMs: 20000,
+      printQRInTerminal: true
+    });
 
-  globalSock = sock;
+    globalSock = sock;
+    store.bind(sock.ev);
+    sock.ev.on('creds.update', saveCreds);
 
-  store.bind(sock.ev);
-  sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('connection.update', (update) => {
+      const { connection, lastDisconnect, qr } = update;
+      const reason = lastDisconnect?.error?.output?.statusCode;
+      const shouldReconnect = reason !== DisconnectReason.loggedOut;
 
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update;
-
-    if (connection === 'close') {
-      const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log('🔌 Koneksi terputus. Reconnect:', shouldReconnect);
-      if (shouldReconnect) {
-        connectToWhatsApp();
+      if (qr) {
+        console.log('📱 Scan QR untuk konek WA');
       }
-    } else if (connection === 'open') {
-      console.log('✅ WhatsApp terhubung!');
-    }
-  });
+      if (connection === 'open') {
+        waReady = true;
+        console.log('✅ WhatsApp terhubung & siap kirim pesan!');
+      } else if (connection === 'close') {
+        waReady = false;
+        console.log(`🔌 Koneksi terputus (${reason}).`);
+        if (shouldReconnect) {
+          console.log('⏳ Mencoba reconnect dalam 20 detik...');
+          setTimeout(connectToWhatsApp, 20000);
+        }
+      }
+    });
 
-  return sock;
+    // Tangkap semua error biar server nggak mati
+    sock.ev.on('error', (err) => {
+      console.error('⚠️ Error WA:', err.message);
+    });
+
+    return sock;
+  } catch (err) {
+    console.error('❌ Gagal koneksi WA:', err.message);
+    setTimeout(connectToWhatsApp, 20000);
+  }
 };
 
-// Kirim pesan teks biasa
+// Kirim pesan biasa
 const sendWaMessage = async (phoneNumber, message) => {
-  if (!globalSock) {
-    throw new Error('❌ WhatsApp belum terhubung.');
+  if (!waReady) {
+    console.log('⚠️ WA belum siap. Pesan tidak terkirim.');
+    return;
   }
   const jid = phoneNumber.replace(/^0/, '62') + '@s.whatsapp.net';
-  await globalSock.sendMessage(jid, { text: message });
+  try {
+    await globalSock.sendMessage(jid, { text: message });
+    console.log(`✅ Pesan terkirim ke ${phoneNumber}`);
+  } catch (err) {
+    console.error(`❌ Gagal kirim pesan ke ${phoneNumber}:`, err.message);
+  }
 };
 
-// Kirim pesan OTP
+// Kirim OTP
 const sendOtpMessage = async (phoneNumber, otpCode) => {
   const message = `🔐 Kode OTP kamu: *${otpCode}*\nJangan bagikan ke siapa pun ya!`;
   await sendWaMessage(phoneNumber, message);
 };
 
-// Getter socket
 const getWASocket = () => globalSock;
 
 module.exports = {

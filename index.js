@@ -3,6 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const serverless = require('serverless-http');
 
+
 // Load env variables
 dotenv.config();
 
@@ -20,14 +21,22 @@ app.use((req, res, next) => {
 
 // Routes
 const authRoutes = require('./routes/authRoutes');
-const kiosRoutes = require('./routes/kiosRoutes');
-const menuRoutes = require('./routes/menuRoutes');
+const kiosRoutes = require('./routes/kiosRoutes');     // sudah termasuk getKiosHomepage, searchKios, getMenusByKios, kios/:id/search
+const menuRoutes = require('./routes/menuRoutes');     // sudah termasuk searchMenus
 const dashboardRoutes = require('./routes/dashboardRoutes');
+const searchRoutes = require('./routes/searchRoutes'); // /search gabungan kios & menu
+const keranjangRoutes = require('./routes/keranjangRoutes');
+const pesananRoutes = require('./routes/pesananRoutes');
 
 app.use('/api', authRoutes);
 app.use('/api/kios', kiosRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api', keranjangRoutes);  // endpoints: /api/keranjang, dll
+app.use('/api', pesananRoutes);   // endpoints: /api/pesanan, /api/pesanan/:id
+
+
 
 // Root endpoint
 app.get('/', (req, res) => {
