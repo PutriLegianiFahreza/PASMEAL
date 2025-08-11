@@ -28,6 +28,8 @@ const searchRoutes = require('./routes/searchRoutes'); // /search gabungan kios 
 const keranjangRoutes = require('./routes/keranjangRoutes');
 const pesananRoutes = require('./routes/pesananRoutes');
 const midtransRoutes = require('./routes/midtransRoutes');
+const penjualRoutes = require('./routes/penjualRoutes');
+
 
 app.use('/api', authRoutes);
 app.use('/api/kios', kiosRoutes);
@@ -37,6 +39,8 @@ app.use('/api/search', searchRoutes);
 app.use('/api', keranjangRoutes);  // endpoints: /api/keranjang, dll
 app.use('/api', pesananRoutes);   // endpoints: /api/pesanan, /api/pesanan/:id
 app.use('/api/midtrans', midtransRoutes);
+app.use('/api/penjual', penjualRoutes);
+
 
 
 // Root endpoint

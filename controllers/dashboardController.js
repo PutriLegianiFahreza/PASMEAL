@@ -1,36 +1,32 @@
 const pool = require('../config/db');
 
-const getDashboardPenjual = async (req, res) => {
-  const penjualId = req.user.id;
+const getDashboardData = async (req, res) => {
+    try {
+        // Total Pesanan
+        const totalPesananQuery = await pool.query(
+            'SELECT COUNT(*) AS total_pesanan FROM pesanan'
+        );
 
-  try {
-    // Hitung total pesanan
-    const pesananRes = await pool.query(`
-      SELECT COUNT(*) FROM pesanan
-      WHERE penjual_id = $1
-    `, [penjualId]);
+        // Total Menu
+        const totalMenuQuery = await pool.query(
+            'SELECT COUNT(*) AS total_menu FROM menu'
+        );
 
-    // Hitung total menu
-    const menuRes = await pool.query(`
-      SELECT COUNT(*) FROM menu
-      WHERE penjual_id = $1
-    `, [penjualId]);
+        // Pendapatan
+        const pendapatanQuery = await pool.query(
+            'SELECT COALESCE(SUM(total_harga), 0) AS pendapatan FROM pesanan WHERE status = $1',
+            ['Selesai']
+        );
 
-    // Hitung total pendapatan (misal total harga dari pesanan yang sudah selesai)
-    const pendapatanRes = await pool.query(`
-      SELECT COALESCE(SUM(total_harga), 0) FROM pesanan
-      WHERE penjual_id = $1 AND status = 'selesai'
-    `, [penjualId]);
-
-    res.json({
-      totalPesanan: parseInt(pesananRes.rows[0].count),
-      totalMenu: parseInt(menuRes.rows[0].count),
-      totalPendapatan: parseInt(pendapatanRes.rows[0].coalesce),
-    });
-  } catch (err) {
-    console.error('Gagal mengambil data dashboard:', err);
-    res.status(500).json({ message: 'Terjadi kesalahan saat mengambil data dashboard' });
-  }
+        res.json({
+            totalPesanan: parseInt(totalPesananQuery.rows[0].total_pesanan),
+            totalMenu: parseInt(totalMenuQuery.rows[0].total_menu),
+            pendapatan: parseInt(pendapatanQuery.rows[0].pendapatan)
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Gagal mengambil data dashboard' });
+    }
 };
 
-module.exports = { getDashboardPenjual };
+module.exports = { getDashboardData };

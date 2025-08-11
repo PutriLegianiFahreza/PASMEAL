@@ -17,4 +17,7 @@ router.get('/:id/menus', kiosController.getMenusByKios);
 // ✅ Tambahkan pencarian menu di kios tertentu
 router.get('/:id/menus/search', menuController.searchMenusByKios);
 
+//profile
+router.put('/', authMiddleware, upload.single('gambar_kios'), kiosController.updateKios);
+
 module.exports = router;
