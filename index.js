@@ -27,6 +27,7 @@ const dashboardRoutes = require('./routes/dashboardRoutes');
 const searchRoutes = require('./routes/searchRoutes'); // /search gabungan kios & menu
 const keranjangRoutes = require('./routes/keranjangRoutes');
 const pesananRoutes = require('./routes/pesananRoutes');
+const midtransRoutes = require('./routes/midtransRoutes');
 
 app.use('/api', authRoutes);
 app.use('/api/kios', kiosRoutes);
@@ -35,7 +36,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api', keranjangRoutes);  // endpoints: /api/keranjang, dll
 app.use('/api', pesananRoutes);   // endpoints: /api/pesanan, /api/pesanan/:id
-
+app.use('/api/midtrans', midtransRoutes);
 
 
 // Root endpoint
