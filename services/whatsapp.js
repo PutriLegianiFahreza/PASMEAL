@@ -46,31 +46,26 @@ const connectToWhatsApp = async () => {
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
       const reason = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = reason !== DisconnectReason.loggedOut;
 
       if (qr) {
         console.log('📱 Scan QR untuk konek WA');
       }
+
       if (connection === 'open') {
         waReady = true;
         console.log('✅ WhatsApp terhubung & siap kirim pesan!');
       } else if (connection === 'close') {
         waReady = false;
         console.log(`🔌 Koneksi terputus (${reason}).`);
-        if (shouldReconnect) {
+
+        if (reason === DisconnectReason.loggedOut) {
+          // Koneksi logout, user harus scan ulang QR
+          console.log('⚠️ WhatsApp sudah logout, silakan scan ulang QR untuk login ulang!');
+          // Bisa tambahkan event emit / state untuk frontend notif scan ulang QR
+        } else {
+          // Koneksi putus karena alasan lain, reconnect otomatis
           console.log('⏳ Mencoba reconnect dalam 20 detik...');
-
-          // Tutup koneksi lama sebelum reconnect
-          if (globalSock) {
-            try {
-              await globalSock.logout();
-              globalSock.ws.close();
-              console.log('⚡ Koneksi lama berhasil ditutup.');
-            } catch (e) {
-              console.error('⚠️ Gagal tutup koneksi lama:', e.message);
-            }
-          }
-
+          // Jangan panggil logout atau close socket karena sudah terputus
           setTimeout(connectToWhatsApp, 20000);
         }
       }
