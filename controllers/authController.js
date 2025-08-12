@@ -67,10 +67,21 @@ const verifyOtp = async (req, res) => {
     await pool.query(`UPDATE penjual SET is_verified = TRUE WHERE id = $1`, [otp.penjual_id]);
     await pool.query(`UPDATE otp SET is_used = TRUE WHERE id = $1`, [otp.id]);
 
-    // Kirim penjual_id supaya bisa dipakai registrasi kios tanpa login
+    // Generate token JWT
+    const token = jwt.sign(
+      {
+        penjual_id: otp.penjual_id,
+        is_verified: true,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' } // token berlaku 7 hari misalnya
+    );
+
+    // Kirim penjual_id dan token ke frontend
     res.status(200).json({ 
       message: 'OTP berhasil diverifikasi', 
-      penjual_id: otp.penjual_id 
+      penjual_id: otp.penjual_id,
+      token,
     });
   } catch (err) {
     console.error(err);
