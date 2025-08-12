@@ -1,9 +1,7 @@
 const pool = require('../config/db');
 const getGuestId = require('../utils/getGuestId');
 
-// Buat pesanan dari keranjang guest
 const buatPesanan = async (req, res) => {
-  // ambil guest_id dari body/header/query (lebih aman: body)
   const guest_id = req.body.guest_id || getGuestId(req);
   const { tipe_pengantaran, nama_pemesan, no_hp, catatan = '', diantar_ke } = req.body;
 
@@ -11,7 +9,6 @@ const buatPesanan = async (req, res) => {
     return res.status(400).json({ message: 'guest_id, tipe_pengantaran, nama_pemesan, no_hp wajib diisi' });
   }
 
-  // validasi: kalau diantar, diantar_ke wajib
   if (tipe_pengantaran === 'diantar' && (!diantar_ke || diantar_ke.trim() === '')) {
     return res.status(400).json({ message: 'diantar_ke wajib diisi jika tipe_pengantaran = diantar' });
   }
@@ -31,16 +28,15 @@ const buatPesanan = async (req, res) => {
 
     const items = k.rows;
     const total_harga = items.reduce((s, it) => s + Number(it.harga) * Number(it.jumlah), 0);
+    const total_estimasi = items.reduce((s, it) => s + (it.estimasi_menit || 10) * Number(it.jumlah), 0);
 
-    // simpan pesanan utama
     const pesananRes = await pool.query(`
-      INSERT INTO pesanan (guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga)
-      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, created_at
-    `, [guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke || null, total_harga]);
+      INSERT INTO pesanan (guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga, status, total_estimasi)
+      VALUES ($1,$2,$3,$4,$5,$6,$7, 'paid', $8) RETURNING id, created_at
+    `, [guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke || null, total_harga, total_estimasi]);
 
     const pesananId = pesananRes.rows[0].id;
 
-    // simpan detail
     const insertDetailText = `
       INSERT INTO pesanan_detail (pesanan_id, menu_id, nama_menu, harga, foto_menu, jumlah, subtotal)
       VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -57,10 +53,18 @@ const buatPesanan = async (req, res) => {
       ]);
     }
 
-    // hapus keranjang guest
     await pool.query('DELETE FROM keranjang WHERE guest_id = $1', [guest_id]);
 
-    // respon detail ringkas
+    const kiosId = items[0].kios_id;
+    const penjualData = await pool.query(`SELECT no_hp_penjual FROM kios WHERE id = $1`, [kiosId]);
+
+    if (penjualData.rows.length > 0) {
+      const noHpPenjual = penjualData.rows[0].no_hp_penjual;
+      const linkDashboard = `https://domain.com/dashboard?kios=${kiosId}`;
+      const message = `📢 Pesanan Baru!\nID Pesanan: ${pesananId}\nLihat pesanan: ${linkDashboard}`;
+      await sendWaMessage(noHpPenjual, message);
+    }
+
     res.status(201).json({
       message: 'Pesanan berhasil dibuat',
       pesanan_id: pesananId,

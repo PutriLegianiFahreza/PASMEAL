@@ -1,55 +1,39 @@
 const pool = require('../config/db');
 
-const createKios = async (req, res) => { 
- console.log("Decoded user:", req.user);
-  console.log("Request body:", req.body);
+const createKios = async (req, res) => {
+  const { penjual_id, nama_kios, nama_bank, nomor_rekening } = req.body;
 
-  const { nama_kios, nama_bank, nomor_rekening } = req.body;
-  const penjualId = req.user?.id; // amanin kalau req.user undefined
-
-  console.log("📩 Data yang diterima untuk membuat kios:", {
-    penjualId,
-    nama_kios,
-    nama_bank,
-    nomor_rekening
-  });
+  if (!penjual_id) {
+    return res.status(400).json({ message: 'penjual_id diperlukan' });
+  }
 
   try {
-    // Cek apakah penjualId valid
-    if (!penjualId) {
-      console.error("❌ penjualId tidak ditemukan di req.user");
-      return res.status(400).json({ message: 'User tidak valid atau belum login' });
+    // Pastikan penjual sudah verified
+    const penjual = await pool.query('SELECT * FROM penjual WHERE id = $1 AND is_verified = TRUE', [penjual_id]);
+    if (penjual.rows.length === 0) {
+      return res.status(400).json({ message: 'Penjual tidak valid atau belum verifikasi' });
     }
 
-    // Cek apakah kios sudah pernah didaftarkan oleh penjual ini
-    const cek = await pool.query('SELECT * FROM kios WHERE penjual_id = $1', [penjualId]);
-    console.log(`📊 Kios ditemukan: ${cek.rows.length} untuk penjualId ${penjualId}`);
-    
+    // Cek apakah kios sudah pernah dibuat
+    const cek = await pool.query('SELECT * FROM kios WHERE penjual_id = $1', [penjual_id]);
     if (cek.rows.length > 0) {
       return res.status(409).json({ message: 'Kios sudah terdaftar' });
     }
 
-    // Masukkan data kios
+    // Insert kios
     const result = await pool.query(`
       INSERT INTO kios (penjual_id, nama_kios, nama_bank, nomor_rekening)
       VALUES ($1, $2, $3, $4)
       RETURNING *
-    `, [penjualId, nama_kios, nama_bank, nomor_rekening]);
+    `, [penjual_id, nama_kios, nama_bank, nomor_rekening]);
 
-    console.log("✅ Kios berhasil dibuat:", result.rows[0]);
     res.status(201).json({ message: 'Kios berhasil didaftarkan', data: result.rows[0] });
-    
+
   } catch (err) {
-    console.error('❌ Gagal membuat kios:', err.message);
-    console.error(err.stack);
-    res.status(500).json({ 
-      message: 'Terjadi kesalahan saat membuat kios', 
-      error: err.message // tampilkan ke Postman untuk debug
-    });
+    console.error(err);
+    res.status(500).json({ message: 'Terjadi kesalahan saat membuat kios' });
   }
 };
-
-
 
 // Ambil beberapa kios untuk homepage
 const getKiosHomepage = async (req, res) => {

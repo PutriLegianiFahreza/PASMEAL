@@ -9,9 +9,13 @@ async function sendWhatsApp(no_hp, message) {
   }
 
   const nomorWA = no_hp.replace(/^0/, '62') + '@s.whatsapp.net';
-  await sock.sendMessage(nomorWA, { text: message });
-
-  console.log(`✅ Pesan WA terkirim ke ${no_hp}`);
+  try {
+    await sock.sendMessage(nomorWA, { text: message });
+    console.log(`✅ Pesan WA terkirim ke ${no_hp}`);
+  } catch (err) {
+    console.error(`❌ Gagal kirim pesan WA ke ${no_hp}:`, err);
+    throw err; // lempar supaya caller tahu
+  }
 }
 
 // Fungsi khusus untuk kirim OTP

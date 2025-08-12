@@ -45,6 +45,7 @@ const register = async (req, res) => {
   }
 };
 
+
 // === VERIFY OTP ===
 const verifyOtp = async (req, res) => {
   const { kode_otp } = req.body;
@@ -62,10 +63,15 @@ const verifyOtp = async (req, res) => {
 
     const otp = result.rows[0];
 
+    // Tandai penjual terverifikasi
     await pool.query(`UPDATE penjual SET is_verified = TRUE WHERE id = $1`, [otp.penjual_id]);
     await pool.query(`UPDATE otp SET is_used = TRUE WHERE id = $1`, [otp.id]);
 
-    res.status(200).json({ message: 'OTP berhasil diverifikasi' });
+    // Kirim penjual_id supaya bisa dipakai registrasi kios tanpa login
+    res.status(200).json({ 
+      message: 'OTP berhasil diverifikasi', 
+      penjual_id: otp.penjual_id 
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
