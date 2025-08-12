@@ -43,7 +43,7 @@ const connectToWhatsApp = async () => {
     store.bind(sock.ev);
     sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
       const reason = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = reason !== DisconnectReason.loggedOut;
@@ -59,12 +59,23 @@ const connectToWhatsApp = async () => {
         console.log(`🔌 Koneksi terputus (${reason}).`);
         if (shouldReconnect) {
           console.log('⏳ Mencoba reconnect dalam 20 detik...');
+
+          // Tutup koneksi lama sebelum reconnect
+          if (globalSock) {
+            try {
+              await globalSock.logout();
+              globalSock.ws.close();
+              console.log('⚡ Koneksi lama berhasil ditutup.');
+            } catch (e) {
+              console.error('⚠️ Gagal tutup koneksi lama:', e.message);
+            }
+          }
+
           setTimeout(connectToWhatsApp, 20000);
         }
       }
     });
 
-    // Tangkap semua error biar server nggak mati
     sock.ev.on('error', (err) => {
       console.error('⚠️ Error WA:', err.message);
     });

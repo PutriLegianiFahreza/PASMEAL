@@ -56,13 +56,23 @@ const buatPesanan = async (req, res) => {
     await pool.query('DELETE FROM keranjang WHERE guest_id = $1', [guest_id]);
 
     const kiosId = items[0].kios_id;
-    const penjualData = await pool.query(`SELECT no_hp_penjual FROM kios WHERE id = $1`, [kiosId]);
 
-    if (penjualData.rows.length > 0) {
-      const noHpPenjual = penjualData.rows[0].no_hp_penjual;
-      const linkDashboard = `https://domain.com/dashboard?kios=${kiosId}`;
-      const message = `📢 Pesanan Baru!\nID Pesanan: ${pesananId}\nLihat pesanan: ${linkDashboard}`;
-      await sendWaMessage(noHpPenjual, message);
+    // Ambil penjual_id dari kios
+    const kiosData = await pool.query(`SELECT penjual_id FROM kios WHERE id = $1`, [kiosId]);
+    if (kiosData.rows.length === 0) {
+      console.warn(`Kios dengan id ${kiosId} tidak ditemukan`);
+    } else {
+      const penjualId = kiosData.rows[0].penjual_id;
+
+      // Ambil no_hp penjual dari tabel penjual
+      const penjualData = await pool.query(`SELECT no_hp FROM penjual WHERE id = $1`, [penjualId]);
+
+      if (penjualData.rows.length > 0) {
+        const noHpPenjual = penjualData.rows[0].no_hp;
+        const linkDashboard = `https://domain.com/dashboard?kios=${kiosId}`;
+        const message = `📢 Pesanan Baru!\nID Pesanan: ${pesananId}\nLihat pesanan: ${linkDashboard}`;
+        await sendWaMessage(noHpPenjual, message);
+      }
     }
 
     res.status(201).json({
