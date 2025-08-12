@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const serverless = require('serverless-http');
+const pool = require('./config/db');
 
 
 // Load env variables

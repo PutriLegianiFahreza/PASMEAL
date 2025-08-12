@@ -1,20 +1,22 @@
 const pool = require('../config/db');
+const { sendWhatsAppOTP } = require('../utils/wa');
 
 const createKios = async (req, res) => {
-  const { penjual_id, nama_kios, nama_bank, nomor_rekening } = req.body;
+  const penjual_id = req.user.id; // ambil dari token, jangan dari body
+  const { nama_kios, nama_bank, nomor_rekening } = req.body;
 
   if (!penjual_id) {
     return res.status(400).json({ message: 'penjual_id diperlukan' });
   }
 
   try {
-    // Pastikan penjual sudah verified
-    const penjual = await pool.query('SELECT * FROM penjual WHERE id = $1 AND is_verified = TRUE', [penjual_id]);
+    // Pastikan penjual ada (tidak harus verified karena sudah dicek middleware)
+    const penjual = await pool.query('SELECT * FROM penjual WHERE id = $1', [penjual_id]);
     if (penjual.rows.length === 0) {
-      return res.status(400).json({ message: 'Penjual tidak valid atau belum verifikasi' });
+      return res.status(400).json({ message: 'Penjual tidak valid' });
     }
 
-    // Cek apakah kios sudah pernah dibuat
+    // Cek apakah kios sudah ada
     const cek = await pool.query('SELECT * FROM kios WHERE penjual_id = $1', [penjual_id]);
     if (cek.rows.length > 0) {
       return res.status(409).json({ message: 'Kios sudah terdaftar' });
@@ -27,7 +29,20 @@ const createKios = async (req, res) => {
       RETURNING *
     `, [penjual_id, nama_kios, nama_bank, nomor_rekening]);
 
-    res.status(201).json({ message: 'Kios berhasil didaftarkan', data: result.rows[0] });
+    // Generate OTP
+    const kode_otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiredAt = new Date(Date.now() + 5 * 60 * 1000); // 5 menit
+
+    // Simpan OTP
+    await pool.query(`
+      INSERT INTO otp (penjual_id, otp_code, expired_at, is_used)
+      VALUES ($1, $2, $3, FALSE)
+    `, [penjual_id, kode_otp, expiredAt]);
+
+    // Kirim OTP ke WhatsApp
+    await sendWhatsAppOTP(penjual.rows[0].no_hp, kode_otp);
+
+    res.status(201).json({ message: 'Kios berhasil didaftarkan dan OTP telah dikirim ke WhatsApp' });
 
   } catch (err) {
     console.error(err);

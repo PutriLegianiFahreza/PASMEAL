@@ -7,6 +7,7 @@ const {
 } = require('@whiskeysockets/baileys');
 const P = require('pino');
 const fs = require('fs');
+const qrcode = require('qrcode-terminal');
 
 const { makeInMemoryStore } = require('@whiskeysockets/baileys');
 const store = makeInMemoryStore({ logger: P({ level: 'silent' }) });
@@ -21,6 +22,20 @@ setInterval(() => {
 process.on('exit', () => {
   store.writeToFile(STORE_FILE);
 });
+
+// Override console.log untuk filter pesan tertentu agar gak muncul
+const originalConsoleLog = console.log;
+console.log = (...args) => {
+  const msg = args.join(' ');
+  if (
+    msg.includes('Closing session') ||
+    msg.includes('Closing open session')
+  ) {
+    // skip pesan ini biar gak nongol di terminal
+    return;
+  }
+  originalConsoleLog(...args);
+};
 
 let globalSock;
 let waReady = false; // status koneksi WA
@@ -48,7 +63,8 @@ const connectToWhatsApp = async () => {
       const reason = lastDisconnect?.error?.output?.statusCode;
 
       if (qr) {
-        console.log('📱 Scan QR untuk konek WA');
+        console.log('📱 Scan QR untuk konek WA:');
+        qrcode.generate(qr, { small: true });
       }
 
       if (connection === 'open') {
@@ -59,13 +75,9 @@ const connectToWhatsApp = async () => {
         console.log(`🔌 Koneksi terputus (${reason}).`);
 
         if (reason === DisconnectReason.loggedOut) {
-          // Koneksi logout, user harus scan ulang QR
           console.log('⚠️ WhatsApp sudah logout, silakan scan ulang QR untuk login ulang!');
-          // Bisa tambahkan event emit / state untuk frontend notif scan ulang QR
         } else {
-          // Koneksi putus karena alasan lain, reconnect otomatis
           console.log('⏳ Mencoba reconnect dalam 20 detik...');
-          // Jangan panggil logout atau close socket karena sudah terputus
           setTimeout(connectToWhatsApp, 20000);
         }
       }
@@ -82,25 +94,26 @@ const connectToWhatsApp = async () => {
   }
 };
 
-// Kirim pesan biasa
 const sendWaMessage = async (phoneNumber, message) => {
   if (!waReady) {
     console.log('⚠️ WA belum siap. Pesan tidak terkirim.');
-    return;
+    return false;
   }
   const jid = phoneNumber.replace(/^0/, '62') + '@s.whatsapp.net';
   try {
     await globalSock.sendMessage(jid, { text: message });
     console.log(`✅ Pesan terkirim ke ${phoneNumber}`);
+    return true;
   } catch (err) {
     console.error(`❌ Gagal kirim pesan ke ${phoneNumber}:`, err.message);
+    return false;
   }
 };
 
-// Kirim OTP
 const sendOtpMessage = async (phoneNumber, otpCode) => {
+  console.log(`Mengirim OTP ke ${phoneNumber} dengan kode: ${otpCode}`);
   const message = `🔐 Kode OTP kamu: *${otpCode}*\nJangan bagikan ke siapa pun ya!`;
-  await sendWaMessage(phoneNumber, message);
+  return await sendWaMessage(phoneNumber, message);
 };
 
 const getWASocket = () => globalSock;

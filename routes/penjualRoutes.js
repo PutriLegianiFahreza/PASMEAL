@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const penjualController = require('../controllers/penjualController');
-const authMiddleware = require('../middlewares/authMiddleware'); // pastikan ini ada
+const { authMiddleware } = require('../middlewares/authMiddleware');
+
 
 router.put('/profil', authMiddleware, penjualController.updateProfil);
 

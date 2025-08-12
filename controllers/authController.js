@@ -5,7 +5,7 @@ const { sendWhatsApp } = require('../utils/wa');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
-// === REGISTER ===
+// === REGISTER PENJUAL ===
 const register = async (req, res) => {
   const { nama, email, no_hp, password, confirmPassword } = req.body;
 
@@ -20,31 +20,36 @@ const register = async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const kode_otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiredAt = new Date(Date.now() + 5 * 60 * 1000); // 5 menit
 
     const result = await pool.query(`
       INSERT INTO penjual (nama, email, no_hp, password, is_verified)
       VALUES ($1, $2, $3, $4, FALSE)
-      RETURNING id
+      RETURNING id, no_hp
     `, [nama, email, no_hp, hashedPassword]);
 
-    const penjualId = result.rows[0].id;
+    // Generate token JWT (meskipun is_verified = false)
+    const jwt = require('jsonwebtoken');
+    const token = jwt.sign(
+      {
+        id: result.rows[0].id,
+        no_hp: result.rows[0].no_hp,
+        is_verified: false
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
 
-    await pool.query(`
-      INSERT INTO otp (penjual_id, otp_code, expired_at)
-      VALUES ($1, $2, $3)
-    `, [penjualId, kode_otp, expiredAt]);
+    res.status(201).json({ 
+      message: 'Penjual berhasil didaftarkan',
+      penjual_id: result.rows[0].id,
+      token // kirim token ke client
+    });
 
-    await sendWhatsAppOTP(no_hp, kode_otp);
-
-    res.status(200).json({ message: 'OTP berhasil dikirim ke WhatsApp' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
-
 
 // === VERIFY OTP ===
 const verifyOtp = async (req, res) => {
@@ -63,21 +68,18 @@ const verifyOtp = async (req, res) => {
 
     const otp = result.rows[0];
 
-    // Tandai penjual terverifikasi
     await pool.query(`UPDATE penjual SET is_verified = TRUE WHERE id = $1`, [otp.penjual_id]);
     await pool.query(`UPDATE otp SET is_used = TRUE WHERE id = $1`, [otp.id]);
 
-    // Generate token JWT
     const token = jwt.sign(
       {
         penjual_id: otp.penjual_id,
         is_verified: true,
       },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' } // token berlaku 7 hari misalnya
+      { expiresIn: '7d' }
     );
 
-    // Kirim penjual_id dan token ke frontend
     res.status(200).json({ 
       message: 'OTP berhasil diverifikasi', 
       penjual_id: otp.penjual_id,
@@ -88,6 +90,7 @@ const verifyOtp = async (req, res) => {
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
+
 
 // === resend OTP ===
 const resendOtp = async (req, res) => {
@@ -145,20 +148,17 @@ const resendOtp = async (req, res) => {
   }
 };
 
-// === LOGIN ===
 const login = async (req, res) => {
   const { nama, password, rememberMe } = req.body;
 
   try {
     const result = await pool.query('SELECT * FROM penjual WHERE nama = $1', [nama]);
-
     if (result.rows.length === 0) {
       return res.status(401).json({ message: 'Nama atau kata sandi salah' });
     }
 
     const penjual = result.rows[0];
 
-    // Tambahkan: cek apakah sudah verifikasi
     if (!penjual.is_verified) {
       return res.status(403).json({ message: 'Akun belum diverifikasi' });
     }
