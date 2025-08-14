@@ -261,11 +261,36 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// === LOGOUT dengan blacklist token ===
+const logout = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Token tidak ditemukan' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.decode(token);
+
+    await pool.query(
+      'INSERT INTO blacklisted_tokens (token, expired_at) VALUES ($1, to_timestamp($2))',
+      [token, decoded.exp]
+    );
+
+    res.status(200).json({ message: 'Logout berhasil' });
+  } catch (err) {
+    console.error('Gagal logout:', err);
+    res.status(500).json({ message: 'Terjadi kesalahan server' });
+  }
+};
+
+
 module.exports = {
   register,
   verifyOtp,
   resendOtp,
   login,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  logout
 };

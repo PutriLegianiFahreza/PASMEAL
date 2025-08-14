@@ -19,13 +19,13 @@ const getAllMenu = async (req, res) => {
 // Tambah menu
 const addMenu = async (req, res) => {
   const penjual_id = req.user.id;
-  const { nama_menu, deskripsi, harga, estimasi_waktu, status_tersedia } = req.body;
+  const { nama_menu, deskripsi, harga, estimasi_menit, status_tersedia } = req.body; // ganti di sini
   const foto_menu = req.file ? req.file.filename : null;
 
   try {
     const result = await pool.query(
       `INSERT INTO menu 
-       (nama_menu, deskripsi, harga, foto_menu, penjual_id, estimasi_waktu, status_tersedia)
+       (nama_menu, deskripsi, harga, foto_menu, penjual_id, estimasi_menit, status_tersedia)  -- ganti di sini
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [
         nama_menu,
@@ -33,8 +33,8 @@ const addMenu = async (req, res) => {
         harga,
         foto_menu,
         penjual_id,
-        estimasi_waktu,
-        status_tersedia !== undefined ? status_tersedia : true // default true
+        estimasi_menit,   // ganti di sini
+        status_tersedia !== undefined ? status_tersedia : true
       ]
     );
 
@@ -52,7 +52,7 @@ const addMenu = async (req, res) => {
 const updateMenu = async (req, res) => {
   const penjualId = req.user.id;
   const menuId = req.params.id;
-  const { nama_menu, harga, deskripsi, estimasi_waktu, status_tersedia } = req.body;
+  const { nama_menu, harga, deskripsi, estimasi_menit, status_tersedia } = req.body;  // ganti di sini
   const foto_menu = req.file ? req.file.filename : null;
 
   try {
@@ -71,7 +71,7 @@ const updateMenu = async (req, res) => {
            harga = $2, 
            deskripsi = $3, 
            foto_menu = COALESCE($4, foto_menu), 
-           estimasi_waktu = $5,
+           estimasi_menit = $5,  -- ganti di sini
            status_tersedia = $6
        WHERE id = $7 AND penjual_id = $8 RETURNING *`,
       [
@@ -79,7 +79,7 @@ const updateMenu = async (req, res) => {
         harga,
         deskripsi,
         foto_menu,
-        estimasi_waktu,
+        estimasi_menit,  // ganti di sini
         status_tersedia !== undefined ? status_tersedia : currentMenu.rows[0].status_tersedia,
         menuId,
         penjualId

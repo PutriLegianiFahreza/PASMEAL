@@ -15,7 +15,7 @@ const buatPesanan = async (req, res) => {
 
   try {
     const k = await pool.query(`
-      SELECT k.id AS keranjang_id, k.menu_id, k.jumlah, m.nama_menu, m.harga, m.foto_menu, m.kios_id, ki.nama_kios
+      SELECT k.id AS keranjang_id, k.menu_id, k.jumlah, m.nama_menu, m.harga, m.foto_menu, m.kios_id, ki.nama_kios, m.estimasi_menit
       FROM keranjang k
       JOIN menu m ON k.menu_id = m.id
       LEFT JOIN kios ki ON m.kios_id = ki.id
@@ -32,10 +32,11 @@ const buatPesanan = async (req, res) => {
 
     const pesananRes = await pool.query(`
       INSERT INTO pesanan (guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga, status, total_estimasi)
-      VALUES ($1,$2,$3,$4,$5,$6,$7, 'paid', $8) RETURNING id, created_at
+      VALUES ($1,$2,$3,$4,$5,$6,$7, 'paid', $8) RETURNING *
     `, [guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke || null, total_harga, total_estimasi]);
 
-    const pesananId = pesananRes.rows[0].id;
+    const pesanan = pesananRes.rows[0];
+    const pesananId = pesanan.id;
 
     const insertDetailText = `
       INSERT INTO pesanan_detail (pesanan_id, menu_id, nama_menu, harga, foto_menu, jumlah, subtotal)
@@ -77,15 +78,14 @@ const buatPesanan = async (req, res) => {
 
     res.status(201).json({
       message: 'Pesanan berhasil dibuat',
-      pesanan_id: pesananId,
-      total_harga,
-      created_at: pesananRes.rows[0].created_at
+      pesanan
     });
   } catch (err) {
     console.error('buatPesanan error:', err);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
+
 
 // ambil daftar pesanan berdasarkan guest_id
 const getPesananByGuest = async (req, res) => {
@@ -94,7 +94,7 @@ const getPesananByGuest = async (req, res) => {
 
   try {
     const result = await pool.query(`
-      SELECT id, tipe_pengantaran, nama_pemesan, no_hp, diantar_ke, total_harga, status, created_at
+      SELECT id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga, total_estimasi, status, created_at
       FROM pesanan
       WHERE guest_id = $1
       ORDER BY created_at DESC
@@ -106,6 +106,7 @@ const getPesananByGuest = async (req, res) => {
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
+
 
 // ambil detail pesanan by id
 const getDetailPesanan = async (req, res) => {
