@@ -3,6 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const serverless = require('serverless-http');
 const pool = require('./config/db');
+const path = require('path');
 
 
 // Load env variables
@@ -44,6 +45,8 @@ app.use('/api/midtrans', midtransRoutes);
 app.use('/api/penjual', penjualRoutes);
 app.use('/api/pesanan', pesananStatusRoutes); 
 
+//buat akses foto
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Root endpoint
 app.get('/', (req, res) => {
