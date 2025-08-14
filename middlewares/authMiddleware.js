@@ -10,6 +10,20 @@ const isTokenBlacklisted = async (token) => {
   return result.rowCount > 0;
 };
 
+// Ambil kios_id dari DB berdasarkan penjual_id
+const attachKiosId = async (user) => {
+  if (!user.kios_id) {
+    const result = await pool.query(
+      'SELECT id FROM kios WHERE penjual_id = $1',
+      [user.id]
+    );
+    if (result.rowCount > 0) {
+      user.kios_id = result.rows[0].id;
+    }
+  }
+  return user;
+};
+
 // Middleware untuk cek token tanpa harus verified
 const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -21,13 +35,12 @@ const authMiddleware = async (req, res, next) => {
   const token = authHeader.split(' ')[1];
 
   try {
-    // Cek blacklist
     if (await isTokenBlacklisted(token)) {
       return res.status(403).json({ message: 'Token sudah logout' });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+    req.user = await attachKiosId(decoded); // tambahkan kios_id jika belum ada
     next();
   } catch (err) {
     return res.status(403).json({ message: 'Token tidak valid atau kadaluarsa' });
@@ -45,7 +58,6 @@ const verifiedMiddleware = async (req, res, next) => {
   const token = authHeader.split(' ')[1];
 
   try {
-    // Cek blacklist
     if (await isTokenBlacklisted(token)) {
       return res.status(403).json({ message: 'Token sudah logout' });
     }
@@ -56,7 +68,7 @@ const verifiedMiddleware = async (req, res, next) => {
       return res.status(403).json({ message: 'Akun belum diverifikasi' });
     }
 
-    req.user = decoded;
+    req.user = await attachKiosId(decoded); // tambahkan kios_id jika belum ada
     next();
   } catch (err) {
     return res.status(403).json({ message: 'Token tidak valid atau kadaluarsa' });

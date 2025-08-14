@@ -10,10 +10,8 @@ if (!fs.existsSync(uploadDir)) {
 
 // Konfigurasi penyimpanan file
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir); // Simpan di folder /uploads
-  },
-  filename: function (req, file, cb) {
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
     const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(file.originalname)}`;
     cb(null, uniqueName);
   }

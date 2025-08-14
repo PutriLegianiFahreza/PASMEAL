@@ -16,24 +16,28 @@ const getAllMenu = async (req, res) => {
   }
 };
 
-// Tambah menu
+//add menu
 const addMenu = async (req, res) => {
   const penjual_id = req.user.id;
-  const { nama_menu, deskripsi, harga, estimasi_menit, status_tersedia } = req.body; // ganti di sini
+  const kios_id = req.user.kios_id;
+  const { nama_menu, deskripsi, harga, estimasi_menit, status_tersedia } = req.body;
   const foto_menu = req.file ? req.file.filename : null;
+
+  console.log('req.file:', req.file); // debug file upload
 
   try {
     const result = await pool.query(
       `INSERT INTO menu 
-       (nama_menu, deskripsi, harga, foto_menu, penjual_id, estimasi_menit, status_tersedia)  -- ganti di sini
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+       (nama_menu, deskripsi, harga, foto_menu, penjual_id, kios_id, estimasi_menit, status_tersedia)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [
         nama_menu,
         deskripsi,
         harga,
         foto_menu,
         penjual_id,
-        estimasi_menit,   // ganti di sini
+        kios_id,
+        estimasi_menit,
         status_tersedia !== undefined ? status_tersedia : true
       ]
     );
@@ -44,56 +48,58 @@ const addMenu = async (req, res) => {
     });
   } catch (error) {
     console.error('Gagal tambah menu:', error);
-    res.status(500).json({ message: 'Terjadi kesalahan server' });
+    res.status(500).json({ message: 'Terjadi kesalahan server', error: error.message });
   }
 };
 
-// Update menu
 const updateMenu = async (req, res) => {
-  const penjualId = req.user.id;
+  const penjual_id = req.user.id;
   const menuId = req.params.id;
-  const { nama_menu, harga, deskripsi, estimasi_menit, status_tersedia } = req.body;  // ganti di sini
-  const foto_menu = req.file ? req.file.filename : null;
+  const allowedFields = ['nama_menu','harga','deskripsi','estimasi_menit','status_tersedia'];
+  const updates = [];
+  const values = [];
+
+  allowedFields.forEach((field, index) => {
+    if (req.body[field] !== undefined) {
+      updates.push(`${field} = $${values.length + 1}`);
+      values.push(req.body[field]);
+    }
+  });
+
+  // Kalau ada file upload, tambahkan foto_menu
+  if (req.file) {
+    updates.push(`foto_menu = $${values.length + 1}`);
+    values.push(req.file.filename);
+  }
+
+  if (updates.length === 0) {
+    return res.status(400).json({ message: 'Tidak ada data yang diupdate' });
+  }
+
+  // Tambahkan kondisi WHERE
+  values.push(menuId);
+  values.push(penjual_id);
+
+  const query = `UPDATE menu SET ${updates.join(', ')} WHERE id = $${values.length - 1} AND penjual_id = $${values.length} RETURNING *`;
 
   try {
-    const currentMenu = await pool.query(
-      'SELECT * FROM menu WHERE id = $1 AND penjual_id = $2',
-      [menuId, penjualId]
-    );
-
-    if (currentMenu.rowCount === 0) {
+    const result = await pool.query(query, values);
+    if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Menu tidak ditemukan atau bukan milik kamu' });
     }
-
-    const updatedMenu = await pool.query(
-      `UPDATE menu 
-       SET nama_menu = $1, 
-           harga = $2, 
-           deskripsi = $3, 
-           foto_menu = COALESCE($4, foto_menu), 
-           estimasi_menit = $5,  -- ganti di sini
-           status_tersedia = $6
-       WHERE id = $7 AND penjual_id = $8 RETURNING *`,
-      [
-        nama_menu,
-        harga,
-        deskripsi,
-        foto_menu,
-        estimasi_menit,  // ganti di sini
-        status_tersedia !== undefined ? status_tersedia : currentMenu.rows[0].status_tersedia,
-        menuId,
-        penjualId
-      ]
-    );
-
     res.status(200).json({
       message: 'Menu berhasil diupdate',
-      data: updatedMenu.rows[0],
+      data: result.rows[0]
     });
   } catch (error) {
-    res.status(500).json({ message: 'Gagal update menu', error });
+    console.error(error);
+    res.status(500).json({ message: 'Terjadi kesalahan server', error: error.message });
   }
 };
+
+
+
+
 
 // Ambil detail 1 menu
 const getMenuById = async (req, res) => {
