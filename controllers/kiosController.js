@@ -31,7 +31,7 @@ const createKios = async (req, res) => {
 
     // Generate OTP
     const kode_otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiredAt = new Date(Date.now() + 5 * 60 * 1000); // 5 menit
+    const expiredAt = new Date(Date.now() + 3 * 60 * 1000); // 3 menit
 
     // Simpan OTP
     await pool.query(`
