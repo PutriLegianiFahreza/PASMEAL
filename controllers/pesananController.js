@@ -1,6 +1,28 @@
 const pool = require('../config/db');
 const getGuestId = require('../utils/getGuestId');
+const { sendWhatsApp: sendWaMessage } = require('../utils/wa');
 
+//notif ke penjual
+const notifyPenjual = async (kiosId, pesananId) => {
+  try {
+    const kiosData = await pool.query('SELECT penjual_id FROM kios WHERE id = $1', [kiosId]);
+    if (kiosData.rows.length === 0) return;
+
+    const penjualId = kiosData.rows[0].penjual_id;
+    const penjualData = await pool.query('SELECT no_hp FROM penjual WHERE id = $1', [penjualId]);
+    if (penjualData.rows.length === 0) return;
+
+    const noHpPenjual = penjualData.rows[0].no_hp;
+    const linkDashboard = `https://domain.com/dashboard?kios=${kiosId}`;
+    const message = `📢 Pesanan Baru!\nID Pesanan: ${pesananId}\nLihat pesanan: ${linkDashboard}`;
+
+    await sendWaMessage(noHpPenjual, message);
+  } catch (err) {
+    console.error('Gagal kirim WA ke penjual:', err);
+  }
+};
+
+//buat pesanan
 const buatPesanan = async (req, res) => {
   const guest_id = req.body.guest_id || getGuestId(req);
   const { tipe_pengantaran, nama_pemesan, no_hp, catatan = '', diantar_ke } = req.body;
@@ -22,22 +44,23 @@ const buatPesanan = async (req, res) => {
       WHERE k.guest_id = $1
     `, [guest_id]);
 
-    if (k.rows.length === 0) {
-      return res.status(400).json({ message: 'Keranjang kosong' });
-    }
+    if (k.rows.length === 0) return res.status(400).json({ message: 'Keranjang kosong' });
 
     const items = k.rows;
     const total_harga = items.reduce((s, it) => s + Number(it.harga) * Number(it.jumlah), 0);
     const total_estimasi = items.reduce((s, it) => s + (it.estimasi_menit || 10) * Number(it.jumlah), 0);
 
-    const pesananRes = await pool.query(`
-      INSERT INTO pesanan (guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga, status, total_estimasi)
-      VALUES ($1,$2,$3,$4,$5,$6,$7, 'paid', $8) RETURNING *
-    `, [guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke || null, total_harga, total_estimasi]);
+    // Buat pesanan dengan status 'pending' dulu
+  const pesananRes = await pool.query(`
+  INSERT INTO pesanan (guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga, status, total_estimasi)
+  VALUES ($1,$2,$3,$4,$5,$6,$7, 'pending', $8) RETURNING *
+`, [guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke || null, total_harga, total_estimasi]);
+
 
     const pesanan = pesananRes.rows[0];
     const pesananId = pesanan.id;
 
+    // Simpan detail pesanan
     const insertDetailText = `
       INSERT INTO pesanan_detail (pesanan_id, menu_id, nama_menu, harga, foto_menu, jumlah, subtotal)
       VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -54,32 +77,14 @@ const buatPesanan = async (req, res) => {
       ]);
     }
 
+    // Hapus keranjang
     await pool.query('DELETE FROM keranjang WHERE guest_id = $1', [guest_id]);
-
-    const kiosId = items[0].kios_id;
-
-    // Ambil penjual_id dari kios
-    const kiosData = await pool.query(`SELECT penjual_id FROM kios WHERE id = $1`, [kiosId]);
-    if (kiosData.rows.length === 0) {
-      console.warn(`Kios dengan id ${kiosId} tidak ditemukan`);
-    } else {
-      const penjualId = kiosData.rows[0].penjual_id;
-
-      // Ambil no_hp penjual dari tabel penjual
-      const penjualData = await pool.query(`SELECT no_hp FROM penjual WHERE id = $1`, [penjualId]);
-
-      if (penjualData.rows.length > 0) {
-        const noHpPenjual = penjualData.rows[0].no_hp;
-        const linkDashboard = `https://domain.com/dashboard?kios=${kiosId}`;
-        const message = `📢 Pesanan Baru!\nID Pesanan: ${pesananId}\nLihat pesanan: ${linkDashboard}`;
-        await sendWaMessage(noHpPenjual, message);
-      }
-    }
 
     res.status(201).json({
       message: 'Pesanan berhasil dibuat',
       pesanan
     });
+
   } catch (err) {
     console.error('buatPesanan error:', err);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
@@ -123,4 +128,4 @@ const getDetailPesanan = async (req, res) => {
   }
 };
 
-module.exports = { buatPesanan, getPesananByGuest, getDetailPesanan };
+module.exports = { buatPesanan, getPesananByGuest, getDetailPesanan, notifyPenjual };

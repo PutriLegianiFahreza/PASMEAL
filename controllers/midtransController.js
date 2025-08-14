@@ -1,7 +1,9 @@
+// controllers/midtransController.js
 const midtransClient = require('midtrans-client');
 const pool = require('../config/db');
+const { notifyPenjual } = require('./pesananController');
 
-// Konfigurasi Snap Midtrans
+// Konfigurasi Midtrans Snap
 const snap = new midtransClient.Snap({
     isProduction: false,
     serverKey: process.env.MIDTRANS_SERVER_KEY,
@@ -11,119 +13,123 @@ const snap = new midtransClient.Snap({
 // CREATE TRANSACTION
 const createTransaction = async (req, res) => {
     try {
-        let { guest_id, items, total_harga } = req.body;
+        const { pesanan_id, guest_id, items, total_harga } = req.body;
 
-        // Hitung total harga jika items ada
-        if (!total_harga && Array.isArray(items)) {
-            total_harga = items.reduce((sum, item) => {
-                const price = parseInt(item.price, 10) || 0;
-                const qty = parseInt(item.qty, 10) || 0;
-                return sum + (price * qty);
-            }, 0);
+        if (!guest_id) return res.status(400).json({ message: "guest_id wajib diisi" });
+
+        let pesananId = pesanan_id;
+
+        let total = total_harga;
+        if (!total && Array.isArray(items)) {
+            total = items.reduce((sum, item) => sum + (parseInt(item.price, 10) || 0) * (parseInt(item.qty, 10) || 0), 0);
         }
 
-        if (!guest_id || total_harga === undefined) {
-            return res.status(400).json({ message: "guest_id dan total_harga wajib diisi" });
+        if (!total || total <= 0) return res.status(400).json({ message: "total_harga harus positif" });
+
+        // Jika pesanan_id tidak ada, insert pesanan baru
+        if (!pesananId) {
+            const insertQuery = `INSERT INTO pesanan (guest_id, status, total_harga) VALUES ($1,$2,$3) RETURNING id`;
+            const result = await pool.query(insertQuery, [guest_id, 'pending', total]);
+            pesananId = result.rows[0].id;
+        } else {
+            // Ambil total_harga dari DB jika pesanan_id ada
+            const result = await pool.query(`SELECT total_harga FROM pesanan WHERE id=$1`, [pesananId]);
+            if (result.rows.length === 0) return res.status(404).json({ message: "Pesanan tidak ditemukan" });
+            total = result.rows[0].total_harga;
         }
 
-        total_harga = parseInt(total_harga, 10);
-        if (isNaN(total_harga) || total_harga <= 0) {
-            return res.status(400).json({ message: "total_harga harus berupa angka positif" });
-        }
-
-        // 1. Insert pesanan
-        const insertQuery = `
-        INSERT INTO pesanan (guest_id, status, total_harga)
-         VALUES ($1, $2, $3) RETURNING id;
-          `;
-        const result = await pool.query(insertQuery, [
-        guest_id,
-        'pending',
-         total_harga
-      ]);
-
-        const pesananId = result.rows[0].id;
-
-        // 2. Buat order_id unik
+        // Buat order_id unik
         const orderId = `ORDER-${pesananId}-${Date.now()}`;
 
-        // 3. Setup parameter Midtrans
+        // Setup Midtrans
         const parameter = {
-            transaction_details: {
-                order_id: orderId,
-                gross_amount: total_harga
-            },
+            transaction_details: { order_id: orderId, gross_amount: total },
             credit_card: { secure: true },
-            customer_details: {
-                first_name: `Guest-${guest_id}`
-            }
+            customer_details: { first_name: `Guest-${guest_id}` }
         };
 
-        // 4. Buat transaksi di Midtrans
+        // Buat transaksi Midtrans
         const transaction = await snap.createTransaction(parameter);
 
-        // 5. Simpan order_id & snap_token ke DB
+        // Update row pesanan yang sudah ada
         await pool.query(
-            `UPDATE pesanan SET order_id = $1, snap_token = $2 WHERE id = $3`,
+            `UPDATE pesanan SET order_id=$1, snap_token=$2 WHERE id=$3`,
             [orderId, transaction.token, pesananId]
         );
 
-        res.json({
-            order_id: orderId,
-            token: transaction.token,
-            redirect_url: transaction.redirect_url
-        });
+        res.json({ order_id: orderId, token: transaction.token, redirect_url: transaction.redirect_url });
 
-    } catch (error) {
-        console.error("[CREATE TRANSACTION ERROR]", error);
+    } catch (err) {
+        console.error(err);
         res.status(500).json({ message: "Gagal membuat transaksi" });
     }
 };
 
-// HANDLE NOTIFICATION
+// HANDLE MIDTRANS NOTIFICATION
 const handleNotification = async (req, res) => {
     try {
-        const notification = req.body;
+        const notif = req.body;
+        console.log("[MIDTRANS NOTIF RECEIVED]", notif);
 
-        console.log("=== WEBHOOK MASUK ===");
-        console.log(JSON.stringify(notification, null, 2)); // log semua isi webhook
+        const orderId = notif.order_id;
+        const transactionStatus = notif.transaction_status;
 
-        const orderId = notification.order_id; // ORDER-{id}-{timestamp}
-        const transactionStatus = notification.transaction_status;
-        const paymentType = notification.payment_type || null;
-        const paymentDetails = notification.va_numbers || notification.permata_va_number || notification.payment_details || null;
-
-        // Ambil id pesanan dari orderId
+        // Ambil pesananId dari orderId
         const pesananId = parseInt(orderId.split('-')[1], 10);
+        console.log("[INFO] Pesanan ID:", pesananId);
 
-        let statusUpdate;
-        if (transactionStatus === 'settlement') {
-            statusUpdate = 'paid';
-        } else if (transactionStatus === 'pending') {
-            statusUpdate = 'pending';
-        } else {
-            statusUpdate = 'failed';
-        }
+        // Tentukan status update
+        let statusUpdate = transactionStatus === 'settlement' ? 'paid' :
+                           transactionStatus === 'pending' ? 'pending' : 'failed';
+        console.log("[INFO] Status update:", statusUpdate);
 
-        // Update status + payment info di DB
-        await pool.query(
-            `UPDATE pesanan 
-             SET status = $1, payment_type = $2, payment_details = $3
-             WHERE id = $4`,
-            [statusUpdate, paymentType, paymentDetails ? JSON.stringify(paymentDetails) : null, pesananId]
+        // Update tabel pesanan
+        const updateQuery = `
+            UPDATE pesanan 
+            SET status=$1, payment_type=$2, payment_details=$3
+            WHERE id=$4
+            RETURNING *;
+        `;
+        const updateResult = await pool.query(updateQuery, [
+            statusUpdate,
+            notif.payment_type,
+            JSON.stringify(notif.va_numbers || notif.permata_va_number || notif.payment_details || null),
+            pesananId
+        ]);
+        console.log("[INFO] Pesanan updated:", updateResult.rows[0]);
+
+        // Kirim WA kalau status 'paid'
+        if (statusUpdate === 'paid') {
+            const pesananData = await pool.query(
+            `SELECT m.kios_id, m.nama_menu
+             FROM pesanan_detail pd
+             JOIN menu m ON pd.menu_id = m.id
+             WHERE pd.pesanan_id=$1`,
+             [pesananId]
         );
 
-        console.log(`✅ Pesanan ${pesananId} diupdate: status=${statusUpdate}, type=${paymentType}`);
+
+            if (pesananData.rows.length === 0) {
+                console.log("[WARN] Tidak ditemukan kios_id untuk pesanan", pesananId);
+            } else {
+                for (const row of pesananData.rows) {
+                    console.log("[INFO] Mengirim WA ke kios_id:", row.kios_id, "menu:", row.menu_name);
+                    try {
+                        await notifyPenjual(row.kios_id, pesananId);
+                        console.log("[SUCCESS] WA dikirim ke kios_id:", row.kios_id);
+                    } catch (err) {
+                        console.error("[ERROR] Gagal kirim WA ke kios_id:", row.kios_id, err);
+                    }
+                }
+            }
+        }
 
         res.json({ message: "Notifikasi diproses" });
-
-    } catch (error) {
-        console.error("[NOTIFICATION ERROR]", error);
+    } catch (err) {
+        console.error("[NOTIFICATION ERROR]", err);
         res.status(500).json({ message: "Gagal memproses notifikasi" });
     }
 };
 
-module.exports = {
-    createTransaction,
-    handleNotification
-};
+
+module.exports = { createTransaction, handleNotification };
