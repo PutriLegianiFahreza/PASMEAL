@@ -100,9 +100,35 @@ const getMenusByKios = async (req, res) => {
   }
 };
 
+//profile kios
+
+const getKiosByPenjual = async (req, res) => {
+    const penjualId = req.user?.id;
+
+    if (!penjualId) {
+        return res.status(401).json({ message: 'Tidak ada ID penjual' });
+    }
+
+    try {
+        const result = await pool.query(
+            'SELECT * FROM kios WHERE penjual_id = $1',
+            [penjualId]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ message: 'Kios tidak ditemukan' });
+        }
+
+        res.json({ message: 'Data kios berhasil diambil', data: result.rows[0] });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Gagal mengambil data kios' });
+    }
+};
+
 const updateKios = async (req, res) => {
     const { nama_kios, deskripsi, nama_bank, nomor_rekening } = req.body;
-    const penjualId = req.user?.id; // dari auth middleware
+    const penjualId = req.user?.id;
     const gambar_kios = req.file ? `/uploads/${req.file.filename}` : null;
 
     if (!penjualId) {
@@ -110,15 +136,42 @@ const updateKios = async (req, res) => {
     }
 
     try {
-        await pool.query(
-            `UPDATE kios 
-             SET nama_kios = $1, deskripsi = $2, nama_bank = $3, nomor_rekening = $4, 
-                 gambar_kios = COALESCE($5, gambar_kios)
-             WHERE penjual_id = $6`,
-            [nama_kios, deskripsi, nama_bank, nomor_rekening, gambar_kios, penjualId]
+        // Ambil data kios lama
+        const { rows, rowCount } = await pool.query(
+            'SELECT * FROM kios WHERE penjual_id = $1',
+            [penjualId]
         );
 
-        res.json({ message: 'Data kios berhasil diperbarui' });
+        if (rowCount === 0) {
+            return res.status(404).json({ message: 'Kios tidak ditemukan' });
+        }
+
+        const oldKios = rows[0];
+
+        // Update, tapi kalau field baru tidak dikirim pakai value lama
+        const result = await pool.query(
+            `UPDATE kios 
+             SET nama_kios = COALESCE($1, $2),
+                 deskripsi = COALESCE($3, $4),
+                 nama_bank = COALESCE($5, $6),
+                 nomor_rekening = COALESCE($7, $8),
+                 gambar_kios = COALESCE($9, $10)
+             WHERE penjual_id = $11
+             RETURNING *`,
+            [
+                nama_kios, oldKios.nama_kios,
+                deskripsi, oldKios.deskripsi,
+                nama_bank, oldKios.nama_bank,
+                nomor_rekening, oldKios.nomor_rekening,
+                gambar_kios, oldKios.gambar_kios,
+                penjualId
+            ]
+        );
+
+        res.json({
+            message: 'Data kios berhasil diperbarui',
+            data: result.rows[0]
+        });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Gagal memperbarui data kios' });
@@ -132,5 +185,6 @@ module.exports = {
   searchKios,
   getAllKios,
   getMenusByKios,
-  updateKios
+  updateKios,
+  getKiosByPenjual
 };

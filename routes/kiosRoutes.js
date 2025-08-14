@@ -3,7 +3,7 @@ const router = express.Router();
 const { authMiddleware } = require('../middlewares/authMiddleware');
 const upload = require('../middlewares/upload');
 const kiosController = require('../controllers/kiosController');
-const menuController = require('../controllers/menuController'); // ⬅ ini yang kurang
+const menuController = require('../controllers/menuController'); // Untuk searchMenusByKios
 
 // Buat kios baru (hanya penjual)
 router.post('/', authMiddleware, kiosController.createKios);
@@ -17,7 +17,8 @@ router.get('/:id/menus', kiosController.getMenusByKios);
 // ✅ Tambahkan pencarian menu di kios tertentu
 router.get('/:id/menus/search', menuController.searchMenusByKios);
 
-//profile
-router.put('/', authMiddleware, upload.single('gambar_kios'), kiosController.updateKios);
+// 🔹 Profile Kios
+router.get('/profil', authMiddleware, kiosController.getKiosByPenjual); // GET data kios milik penjual
+router.put('/profil', authMiddleware, upload.single('gambar_kios'), kiosController.updateKios); // UPDATE data kios milik penjual
 
 module.exports = router;
