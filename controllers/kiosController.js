@@ -129,7 +129,6 @@ const getKiosByPenjual = async (req, res) => {
 const updateKios = async (req, res) => {
     const { nama_kios, deskripsi, nama_bank, nomor_rekening } = req.body;
     const penjualId = req.user?.id;
-    const gambar_kios = req.file ? `/uploads/${req.file.filename}` : null;
 
     if (!penjualId) {
         return res.status(401).json({ message: 'Tidak ada ID penjual' });
@@ -148,6 +147,11 @@ const updateKios = async (req, res) => {
 
         const oldKios = rows[0];
 
+        // Buat URL lengkap untuk gambar jika ada upload baru
+        const gambar_kios = req.file 
+            ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}` 
+            : oldKios.gambar_kios;
+
         // Update, tapi kalau field baru tidak dikirim pakai value lama
         const result = await pool.query(
             `UPDATE kios 
@@ -155,15 +159,15 @@ const updateKios = async (req, res) => {
                  deskripsi = COALESCE($3, $4),
                  nama_bank = COALESCE($5, $6),
                  nomor_rekening = COALESCE($7, $8),
-                 gambar_kios = COALESCE($9, $10)
-             WHERE penjual_id = $11
+                 gambar_kios = $9
+             WHERE penjual_id = $10
              RETURNING *`,
             [
                 nama_kios, oldKios.nama_kios,
                 deskripsi, oldKios.deskripsi,
                 nama_bank, oldKios.nama_bank,
                 nomor_rekening, oldKios.nomor_rekening,
-                gambar_kios, oldKios.gambar_kios,
+                gambar_kios,
                 penjualId
             ]
         );

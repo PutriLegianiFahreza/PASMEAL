@@ -215,7 +215,7 @@ const forgotPassword = async (req, res) => {
     `, [penjualId, token, expired_at]);
 
     // 4. Buat link reset password
-    const resetLink = `https://frontendmu.com/reset-password?token=${token}`;
+    const resetLink = `https://pas-meal.vercel.app/NewPassPage?token=${token}`;
 
     // 5. Kirim via WhatsApp
     const message = `🔐 Permintaan reset password diterima.\n\nKlik link berikut untuk mengganti password kamu:\n${resetLink}\n\nLink ini berlaku selama 15 menit.`;
