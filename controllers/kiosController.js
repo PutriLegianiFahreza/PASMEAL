@@ -182,6 +182,31 @@ const updateKios = async (req, res) => {
     }
 };
 
+// Ambil detail kios berdasarkan kios_id (untuk pembeli)
+const getKiosDetail = async (req, res) => {
+  try {
+    const kiosId = req.params.id;
+
+    const result = await pool.query(
+      `SELECT k.id, k.nama_kios, k.deskripsi, k.gambar_kios
+       FROM kios k
+       JOIN penjual p ON k.penjual_id = p.id
+       WHERE k.id = $1`,
+      [kiosId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Kios tidak ditemukan' });
+    }
+
+    res.json({ message: 'Detail kios berhasil diambil', data: result.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Gagal mengambil detail kios' });
+  }
+};
+
+
 
 module.exports = { 
   createKios,
@@ -190,5 +215,6 @@ module.exports = {
   getAllKios,
   getMenusByKios,
   updateKios,
-  getKiosByPenjual
+  getKiosByPenjual, 
+  getKiosDetail
 };

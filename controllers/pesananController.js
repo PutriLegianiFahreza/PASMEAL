@@ -36,6 +36,57 @@ const notifyPenjual = async (kiosId, pesananId) => {
   }
 };
 
+// notif ke pembeli setelah pesanan selesai (lengkap dengan daftar menu)
+const notifyPembeliPesananSelesai = async (pesananId) => {
+  try {
+    // Ambil data pesanan
+    const pesananRes = await pool.query(
+      `SELECT nama_pemesan, no_hp, total_harga, tipe_pengantaran, diantar_ke
+       FROM pesanan WHERE id = $1`,
+      [pesananId]
+    );
+
+    if (pesananRes.rows.length === 0) return;
+
+    const pesanan = pesananRes.rows[0];
+    const noHpPembeli = pesanan.no_hp;
+    const namaPembeli = pesanan.nama_pemesan;
+
+    // Ambil detail menu
+    const detailRes = await pool.query(
+      `SELECT nama_menu, jumlah, harga
+       FROM pesanan_detail
+       WHERE pesanan_id = $1`,
+      [pesananId]
+    );
+
+    const menuList = detailRes.rows
+      .map(item => `${item.nama_menu} x${item.jumlah} = Rp${(item.harga * item.jumlah).toLocaleString()}`)
+      .join('\n');
+
+    const alamat = pesanan.tipe_pengantaran === 'diantar'
+      ? `\nDiantar ke: ${pesanan.diantar_ke}`
+      : '\nAmbil sendiri di kantin';
+
+    const message = `
+Hai ${namaPembeli}! 🎉
+Pesanan kamu dengan ID ${pesananId} sudah selesai dan berhasil diterima.
+Berikut detail pesananmu:
+${menuList}
+Total: Rp${Number(pesanan.total_harga).toLocaleString()}
+${alamat}
+
+Terima kasih sudah memesan di kantin kami! 😊
+Selamat menikmati makanannya!
+`;
+
+    await sendWaMessage(noHpPembeli, message);
+    console.log(`Notifikasi WA ke pembeli ${namaPembeli} (${noHpPembeli}) berhasil dikirim.`);
+  } catch (err) {
+    console.error('Gagal kirim WA ke pembeli:', err);
+  }
+};
+
 //buat pesanan
 const buatPesanan = async (req, res) => {
   const guest_id = req.body.guest_id || getGuestId(req);
@@ -262,7 +313,7 @@ const getDetailPesananMasuk = async (req, res) => {
   }
 };
 
-//update status pesanan 
+//update status pesanan
 const updateStatusPesanan = async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -282,7 +333,14 @@ const updateStatusPesanan = async (req, res) => {
       return res.status(404).json({ message: 'Pesanan tidak ditemukan' });
     }
 
-    res.json({ message: 'Status berhasil diperbarui', pesanan: result.rows[0] });
+    const pesanan = result.rows[0];
+
+    // Jika statusnya 'done', kirim notifikasi WA ke pembeli
+    if (status === 'done') {
+      notifyPembeliPesananSelesai(pesanan.id);
+    }
+
+    res.json({ message: 'Status berhasil diperbarui', pesanan });
   } catch (err) {
     console.error('updateStatusPesanan error:', err);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
@@ -337,6 +395,7 @@ module.exports =
   getDetailPesanan, 
   getPesananMasuk, 
   notifyPenjual,
+  notifyPembeliPesananSelesai,
   getStatusLabel,
   getDetailPesananMasuk,
   updateStatusPesanan,

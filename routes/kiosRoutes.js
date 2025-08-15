@@ -13,6 +13,8 @@ router.get('/homepage', kiosController.getKiosHomepage);
 router.get('/search', kiosController.searchKios);
 router.get('/', kiosController.getAllKios);
 router.get('/:id/menus', kiosController.getMenusByKios);
+router.get('/:id', kiosController.getKiosDetail);
+
 
 // ✅ Tambahkan pencarian menu di kios tertentu
 router.get('/:id/menus/search', menuController.searchMenusByKios);
