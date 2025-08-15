@@ -54,7 +54,7 @@ const createKios = async (req, res) => {
 const getKiosHomepage = async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT * FROM kios ORDER BY created_at DESC LIMIT 10'
+      'SELECT * FROM kios ORDER BY created_at DESC LIMIT 8'
     );
     res.json(result.rows);
   } catch (err) {

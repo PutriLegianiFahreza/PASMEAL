@@ -79,21 +79,38 @@ const handleNotification = async (req, res) => {
         console.log("[INFO] Pesanan ID:", pesananId);
 
         // Tentukan status update
-        let statusUpdate = transactionStatus === 'settlement' ? 'paid' :
-                           transactionStatus === 'pending' ? 'pending' : 'failed';
+        let statusUpdate;
+        if (transactionStatus === 'settlement') {
+            statusUpdate = 'paid';
+        } else if (transactionStatus === 'pending') {
+            statusUpdate = 'pending';
+        } else {
+            statusUpdate = 'failed';
+        }
         console.log("[INFO] Status update:", statusUpdate);
 
-        // Update tabel pesanan
+        // Update tabel pesanan (pakai CAST supaya aman di ENUM/VARCHAR)
         const updateQuery = `
             UPDATE pesanan 
-            SET status=$1, payment_type=$2, payment_details=$3
-            WHERE id=$4
+            SET status = $1::text, 
+                payment_type = $2, 
+                payment_details = $3,
+                paid_at = CASE 
+                            WHEN $1::text = 'paid' THEN NOW() 
+                            ELSE paid_at 
+                          END
+            WHERE id = $4
             RETURNING *;
         `;
         const updateResult = await pool.query(updateQuery, [
             statusUpdate,
             notif.payment_type,
-            JSON.stringify(notif.va_numbers || notif.permata_va_number || notif.payment_details || null),
+            JSON.stringify(
+                notif.va_numbers ||
+                notif.permata_va_number ||
+                notif.payment_details ||
+                null
+            ),
             pesananId
         ]);
         console.log("[INFO] Pesanan updated:", updateResult.rows[0]);
@@ -101,19 +118,18 @@ const handleNotification = async (req, res) => {
         // Kirim WA kalau status 'paid'
         if (statusUpdate === 'paid') {
             const pesananData = await pool.query(
-            `SELECT m.kios_id, m.nama_menu
-             FROM pesanan_detail pd
-             JOIN menu m ON pd.menu_id = m.id
-             WHERE pd.pesanan_id=$1`,
-             [pesananId]
-        );
-
+                `SELECT m.kios_id, m.nama_menu
+                 FROM pesanan_detail pd
+                 JOIN menu m ON pd.menu_id = m.id
+                 WHERE pd.pesanan_id=$1`,
+                [pesananId]
+            );
 
             if (pesananData.rows.length === 0) {
                 console.log("[WARN] Tidak ditemukan kios_id untuk pesanan", pesananId);
             } else {
                 for (const row of pesananData.rows) {
-                    console.log("[INFO] Mengirim WA ke kios_id:", row.kios_id, "menu:", row.menu_name);
+                    console.log("[INFO] Mengirim WA ke kios_id:", row.kios_id, "menu:", row.nama_menu);
                     try {
                         await notifyPenjual(row.kios_id, pesananId);
                         console.log("[SUCCESS] WA dikirim ke kios_id:", row.kios_id);
@@ -130,6 +146,5 @@ const handleNotification = async (req, res) => {
         res.status(500).json({ message: "Gagal memproses notifikasi" });
     }
 };
-
 
 module.exports = { createTransaction, handleNotification };
