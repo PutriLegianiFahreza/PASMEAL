@@ -289,6 +289,47 @@ const updateStatusPesanan = async (req, res) => {
   }
 };
 
+//riwayat pesanan
+const getRiwayatPesanan = async (req, res) => {
+  try {
+    const pesananQuery = `
+      SELECT p.id, p.nama_pemesan, p.no_hp, 
+             CASE WHEN p.tipe_pengantaran = 'diantar' THEN p.diantar_ke ELSE NULL END AS alamat_pengantaran,
+             p.payment_type, p.tipe_pengantaran, p.total_harga, p.status,
+             TO_CHAR(p.created_at, 'DD Mon YYYY HH24:MI') AS tanggal,
+             p.catatan
+      FROM pesanan p
+      WHERE p.status = 'done'
+      ORDER BY p.created_at DESC
+    `;
+
+    const pesananResult = await pool.query(pesananQuery);
+    console.log('pesananResult.rows:', pesananResult.rows);
+
+    if (pesananResult.rows.length === 0) {
+      return res.json({ message: 'Riwayat Pesanan Kosong', data: [] });
+    }
+
+    const pesananIds = pesananResult.rows.map(p => p.id);
+    const detailQuery = `
+      SELECT pd.pesanan_id, pd.nama_menu, pd.jumlah, pd.harga
+      FROM pesanan_detail pd
+      WHERE pd.pesanan_id = ANY($1::int[])
+    `;
+    const detailResult = await pool.query(detailQuery, [pesananIds]);
+    console.log('detailResult.rows:', detailResult.rows);
+
+    const data = pesananResult.rows.map(pesanan => {
+      const detail = detailResult.rows.filter(d => d.pesanan_id === pesanan.id);
+      return { ...pesanan, detail };
+    });
+
+    res.json({ message: 'Berhasil ambil riwayat pesanan', data });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Terjadi kesalahan server', error: error.message });
+  }
+};
 
 module.exports = 
 { buatPesanan, 
@@ -298,5 +339,6 @@ module.exports =
   notifyPenjual,
   getStatusLabel,
   getDetailPesananMasuk,
-  updateStatusPesanan
+  updateStatusPesanan,
+  getRiwayatPesanan
 };
