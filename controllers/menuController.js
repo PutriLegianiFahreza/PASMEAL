@@ -97,10 +97,6 @@ const updateMenu = async (req, res) => {
   }
 };
 
-
-
-
-
 // Ambil detail 1 menu
 const getMenuById = async (req, res) => {
   const penjualId = req.user.id;
@@ -142,11 +138,11 @@ const deleteMenu = async (req, res) => {
   }
 };
 
-// Ambil 10 menu terbaru
+// Ambil 5 menu terbaru
 const getNewMenus = async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT * FROM menu ORDER BY created_at DESC LIMIT 10'
+      'SELECT * FROM menu ORDER BY created_at DESC LIMIT 5'
     );
     res.json(result.rows);
   } catch (err) {
