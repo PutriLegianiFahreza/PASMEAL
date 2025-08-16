@@ -6,7 +6,7 @@ const { verifiedMiddleware } = require('../middlewares/authMiddleware');
 // Buat pesanan dari keranjang(pembeli)
 router.post('/pesanan', pesananController.buatPesanan);
 
-// Ambil daftar pesanan by guest_id(pembeli)
+// Ambil daftar pesanan by guest_id(penjual)
 router.get('/pesanan', pesananController.getPesananByGuest);
 
 // Riwayat pesanan(penjual)

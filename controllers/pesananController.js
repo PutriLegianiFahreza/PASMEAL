@@ -2,23 +2,37 @@ const pool = require('../config/db');
 const getGuestId = require('../utils/getGuestId');
 const { sendWhatsApp: sendWaMessage } = require('../utils/wa');
 
-//notif ke penjual
+// Notifikasi ke penjual
 const notifyPenjual = async (kiosId, pesananId) => {
   try {
-    const kiosData = await pool.query('SELECT penjual_id FROM kios WHERE id = $1', [kiosId]);
+    // Ambil penjual_id dari kios
+    const kiosData = await pool.query(
+      'SELECT penjual_id FROM kios WHERE id = $1',
+      [kiosId]
+    );
     if (kiosData.rows.length === 0) return;
 
     const penjualId = kiosData.rows[0].penjual_id;
-    const penjualData = await pool.query('SELECT no_hp FROM penjual WHERE id = $1', [penjualId]);
+
+    // Ambil nomor HP penjual
+    const penjualData = await pool.query(
+      'SELECT no_hp FROM penjual WHERE id = $1',
+      [penjualId]
+    );
     if (penjualData.rows.length === 0) return;
 
     const noHpPenjual = penjualData.rows[0].no_hp;
 
-    // Ambil pesanan pertama yang statusnya pending atau menunggu diproses
+    // Ambil pesanan pertama yang statusnya pending
     const firstOrder = await pool.query(
       `SELECT id FROM pesanan
-       WHERE EXISTS (SELECT 1 FROM pesanan_detail pd JOIN menu m ON pd.menu_id = m.id WHERE m.kios_id = $1 AND pd.pesanan_id = pesanan.id)
-         AND status = 'pending'
+       WHERE EXISTS (
+         SELECT 1 
+         FROM pesanan_detail pd 
+         JOIN menu m ON pd.menu_id = m.id 
+         WHERE m.kios_id = $1 AND pd.pesanan_id = pesanan.id
+       )
+       AND status = 'pending'
        ORDER BY created_at ASC
        LIMIT 1`,
       [kiosId]
@@ -26,32 +40,37 @@ const notifyPenjual = async (kiosId, pesananId) => {
 
     const firstPesananId = firstOrder.rows.length > 0 ? firstOrder.rows[0].id : pesananId;
 
-    // Link FE langsung ke detail pesanan
-    const linkDashboard = `https://pas-meal.vercel.app/OrderPage/${firstPesananId}`;
+    // Link frontend langsung ke detail pesanan
+    const linkDashboard = `https://pas-meal.vercel.app/OrderPage?kiosId=${kiosId}`;
 
-    const message = `📢 Pesanan Baru!\nID Pesanan: ${pesananId}\nLihat pesanan: ${linkDashboard}`;
+    const message = `📢 Pesanan Baru!
+ID Pesanan: ${pesananId}
+Lihat pesanan: ${linkDashboard}`;
 
     await sendWaMessage(noHpPenjual, message);
+
   } catch (err) {
     console.error('Gagal kirim WA ke penjual:', err);
   }
 };
 
-// notif ke pembeli setelah pesanan selesai
+// Notifikasi ke pembeli setelah pesanan selesai
 const notifyPembeliPesananSelesai = async (pesananId) => {
   try {
+    // Ambil data pesanan
     const pesananRes = await pool.query(
       `SELECT nama_pemesan, no_hp, total_harga, tipe_pengantaran, diantar_ke
-       FROM pesanan WHERE id = $1`,
+       FROM pesanan 
+       WHERE id = $1`,
       [pesananId]
     );
-
     if (pesananRes.rows.length === 0) return;
 
     const pesanan = pesananRes.rows[0];
     const noHpPembeli = pesanan.no_hp;
     const namaPembeli = pesanan.nama_pemesan;
 
+    // Ambil detail pesanan
     const detailRes = await pool.query(
       `SELECT nama_menu, jumlah, harga
        FROM pesanan_detail
@@ -67,24 +86,26 @@ const notifyPembeliPesananSelesai = async (pesananId) => {
       ? `\nDiantar ke: ${pesanan.diantar_ke}`
       : '\nAmbil sendiri di kantin';
 
-            const message = `
-        Hai ${namaPembeli}! 🎉
-        Pesanan kamu dengan ID ${pesananId} sudah selesai dan berhasil diterima.
-        Berikut detail pesananmu:
-        ${menuList}
-        Total: Rp${Number(pesanan.total_harga).toLocaleString()}
-        ${alamat}
+    const message = `
+Hai ${namaPembeli}! 🎉
+Pesanan kamu dengan ID ${pesananId} sudah selesai dan berhasil diterima.
+Berikut detail pesananmu:
+${menuList}
+Total: Rp${Number(pesanan.total_harga).toLocaleString()}
+${alamat}
 
-        Terima kasih sudah memesan di kantin Universitas Setiabudi! 😊
-        Selamat menikmati makanannya!
-        `;
+Terima kasih sudah memesan di kantin Universitas Setiabudi! 😊
+Selamat menikmati makanannya!
+`;
 
     await sendWaMessage(noHpPembeli, message);
     console.log(`Notifikasi WA ke pembeli ${namaPembeli} (${noHpPembeli}) berhasil dikirim.`);
+
   } catch (err) {
     console.error('Gagal kirim WA ke pembeli:', err);
   }
 };
+
 
 //buat pesanan(pembeli)
 const buatPesanan = async (req, res) => {
