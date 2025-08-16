@@ -11,6 +11,10 @@ const addToKeranjang = async (req, res) => {
   }
 
   try {
+    // Ambil harga menu dulu
+    const hargaResult = await pool.query('SELECT harga FROM menu WHERE id = $1', [menu_id]);
+    const harga = hargaResult.rows[0]?.harga || 0;
+
     const existing = await pool.query(
       'SELECT * FROM keranjang WHERE guest_id = $1 AND menu_id = $2',
       [guest_id, menu_id]
@@ -18,31 +22,31 @@ const addToKeranjang = async (req, res) => {
 
     let item;
     if (existing.rows.length > 0) {
+      const newJumlah = existing.rows[0].jumlah + jumlah;
+      const total_harga = harga * newJumlah;
+
       const updated = await pool.query(
-        'UPDATE keranjang SET jumlah = jumlah + $1, catatan = $3 WHERE guest_id = $2 AND menu_id = $4 RETURNING *',
-        [jumlah, guest_id, catatan || existing.rows[0].catatan, menu_id]
+        `UPDATE keranjang 
+         SET jumlah = $1, catatan = $2, total_harga = $3 
+         WHERE guest_id = $4 AND menu_id = $5 
+         RETURNING *`,
+        [newJumlah, catatan || existing.rows[0].catatan, total_harga, guest_id, menu_id]
       );
       item = updated.rows[0];
     } else {
+      const total_harga = harga * jumlah;
+
       const inserted = await pool.query(
-        `INSERT INTO keranjang (guest_id, menu_id, jumlah, catatan)
-         VALUES ($1, $2, $3, $4) RETURNING *`,
-        [guest_id, menu_id, jumlah, catatan]
+        `INSERT INTO keranjang (guest_id, menu_id, jumlah, catatan, total_harga)
+         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [guest_id, menu_id, jumlah, catatan, total_harga]
       );
       item = inserted.rows[0];
     }
 
-    // Ambil harga untuk hitung total
-    const hargaResult = await pool.query('SELECT harga FROM menu WHERE id = $1', [menu_id]);
-    const harga = hargaResult.rows[0]?.harga || 0;
-    const total_harga = harga * item.jumlah;
-
     res.status(existing.rows.length > 0 ? 200 : 201).json({
       message: existing.rows.length > 0 ? 'Jumlah diperbarui' : 'Ditambahkan ke keranjang',
-      item: {
-        ...item,
-        total_harga
-      }
+      item
     });
   } catch (err) {
     console.error('addToKeranjang error:', err);
@@ -93,31 +97,24 @@ const updateKeranjangItem = async (req, res) => {
       return res.status(404).json({ message: 'Item tidak ditemukan' });
     }
 
-    // Ambil jumlah baru (pakai yang dikirim atau tetap)
     const newJumlah = jumlah ?? check.rows[0].jumlah;
 
-    // Update jumlah & catatan
+    // Ambil harga untuk hitung total_harga
+    const hargaResult = await pool.query('SELECT harga FROM menu WHERE id = $1', [check.rows[0].menu_id]);
+    const harga = hargaResult.rows[0]?.harga || 0;
+    const total_harga = harga * newJumlah;
+
     const updated = await pool.query(
       `UPDATE keranjang
-       SET jumlah = $1, catatan = COALESCE($2, catatan)
-       WHERE id = $3 AND guest_id = $4
+       SET jumlah = $1, catatan = COALESCE($2, catatan), total_harga = $3
+       WHERE id = $4 AND guest_id = $5
        RETURNING *`,
-      [newJumlah, catatan, id, guest_id]
+      [newJumlah, catatan, total_harga, id, guest_id]
     );
-
-    const item = updated.rows[0];
-
-    // Ambil harga untuk hitung total_harga
-    const hargaResult = await pool.query('SELECT harga FROM menu WHERE id = $1', [item.menu_id]);
-    const harga = hargaResult.rows[0]?.harga || 0;
-    const total_harga = harga * item.jumlah;
 
     res.json({
       message: 'Item diperbarui',
-      item: {
-        ...item,
-        total_harga
-      }
+      item: updated.rows[0]
     });
   } catch (err) {
     console.error('updateKeranjangItem error:', err);
