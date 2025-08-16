@@ -5,6 +5,10 @@ const upload = require('../middlewares/upload');
 const kiosController = require('../controllers/kiosController');
 const menuController = require('../controllers/menuController'); // Untuk searchMenusByKios
 
+// 🔹 Profile Kios
+router.get('/profil', authMiddleware, kiosController.getKiosByPenjual); // GET data kios milik penjual
+router.put('/profil', authMiddleware, upload.single('gambar_kios'), kiosController.updateKios); // UPDATE data kios milik penjual
+
 // Buat kios baru (hanya penjual)
 router.post('/', authMiddleware, kiosController.createKios);
 
@@ -18,9 +22,5 @@ router.get('/:id', kiosController.getKiosDetail);
 
 // ✅ Tambahkan pencarian menu di kios tertentu
 router.get('/:id/menus/search', menuController.searchMenusByKios);
-
-// 🔹 Profile Kios
-router.get('/profil', authMiddleware, kiosController.getKiosByPenjual); // GET data kios milik penjual
-router.put('/profil', authMiddleware, upload.single('gambar_kios'), kiosController.updateKios); // UPDATE data kios milik penjual
 
 module.exports = router;
