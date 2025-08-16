@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const { sendWhatsAppOTP } = require('../utils/wa');
 
+//registrasi kios penjual
 const createKios = async (req, res) => {
   const penjual_id = req.user.id; 
   const { nama_kios, nama_bank, nomor_rekening } = req.body;
@@ -44,7 +45,7 @@ const createKios = async (req, res) => {
   }
 };
 
-// MENAMPILKAN 8 KIOS DI HOMEPAGE
+// MENAMPILKAN 8 KIOS DI HOMEPAGE(pembeli)
 const getKiosHomepage = async (req, res) => {
   try {
     const result = await pool.query(
@@ -56,7 +57,7 @@ const getKiosHomepage = async (req, res) => {
   }
 };
 
-// SEARCH KIOS
+// SEARCH KIOS(pembeli)
 const searchKios = async (req, res) => {
   const { query } = req.query;
   try {
@@ -70,7 +71,7 @@ const searchKios = async (req, res) => {
   }
 };
 
-// Ambil semua kios
+// Ambil semua kios(pembeli)
 const getAllKios = async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM kios ORDER BY created_at DESC');
@@ -80,7 +81,7 @@ const getAllKios = async (req, res) => {
   }
 };
 
-// Ambil menu berdasarkan kios
+// Ambil menu berdasarkan kios(pembeli)
 const getMenusByKios = async (req, res) => {
   try {
     const kiosId = req.params.id;
@@ -94,8 +95,7 @@ const getMenusByKios = async (req, res) => {
   }
 };
 
-
-//profile kios
+//profile kios(penjual)
 const getKiosByPenjual = async (req, res) => {
     const penjualId = req.user?.id;
 
@@ -120,7 +120,7 @@ const getKiosByPenjual = async (req, res) => {
     }
 };
 
-//UPDATE PROFILE KIOS
+//UPDATE PROFILE KIOS(penjual)
 const updateKios = async (req, res) => {
     const { nama_kios, deskripsi, nama_bank, nomor_rekening } = req.body;
     const penjualId = req.user?.id;
@@ -174,7 +174,7 @@ const updateKios = async (req, res) => {
     }
 };
 
-// Ambil detail kios berdasarkan kios_id (untuk pembeli)
+// Ambil detail kios berdasarkan kios_id (pembeli)
 const getKiosDetail = async (req, res) => {
   try {
     const kiosId = req.params.id;

@@ -11,9 +11,29 @@ const addToKeranjang = async (req, res) => {
   }
 
   try {
-    const hargaResult = await pool.query('SELECT harga FROM menu WHERE id = $1', [menu_id]);
-    const harga = hargaResult.rows[0]?.harga || 0;
+    // Ambil harga + kios_id dari menu
+    const menuResult = await pool.query(
+      'SELECT harga, kios_id FROM menu WHERE id = $1',
+      [menu_id]
+    );
+    if (menuResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Menu tidak ditemukan' });
+    }
 
+    const { harga, kios_id } = menuResult.rows[0];
+
+    // Cek apakah keranjang user ada dari kios lain
+    const existingCart = await pool.query(
+      'SELECT DISTINCT kios_id FROM keranjang WHERE guest_id = $1',
+      [guest_id]
+    );
+
+    if (existingCart.rows.length > 0 && existingCart.rows[0].kios_id !== kios_id) {
+      // Reset keranjang kalau beda kios
+      await pool.query('DELETE FROM keranjang WHERE guest_id = $1', [guest_id]);
+    }
+
+    // Cek apakah menu sudah ada di keranjang
     const existing = await pool.query(
       'SELECT * FROM keranjang WHERE guest_id = $1 AND menu_id = $2',
       [guest_id, menu_id]
@@ -36,9 +56,9 @@ const addToKeranjang = async (req, res) => {
       const total_harga = harga * jumlah;
 
       const inserted = await pool.query(
-        `INSERT INTO keranjang (guest_id, menu_id, jumlah, catatan, total_harga)
-         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [guest_id, menu_id, jumlah, catatan, total_harga]
+        `INSERT INTO keranjang (guest_id, kios_id, menu_id, jumlah, catatan, total_harga)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [guest_id, kios_id, menu_id, jumlah, catatan, total_harga]
       );
       item = inserted.rows[0];
     }
@@ -62,7 +82,7 @@ const getKeranjang = async (req, res) => {
 
   try {
     const result = await pool.query(`
-      SELECT k.id, k.menu_id, m.nama_menu, m.harga, m.foto_menu, k.jumlah, k.catatan,
+      SELECT k.id, k.menu_id, k.kios_id, m.nama_menu, m.harga, m.foto_menu, k.jumlah, k.catatan,
              (m.harga * k.jumlah) AS subtotal
       FROM keranjang k
       JOIN menu m ON k.menu_id = m.id
@@ -72,15 +92,15 @@ const getKeranjang = async (req, res) => {
 
     const items = result.rows;
     const total_harga = items.reduce((s, it) => s + Number(it.subtotal || 0), 0);
+    const kios_id = items.length > 0 ? items[0].kios_id : null;
 
     res.setHeader('X-Buyer-Id', guest_id);
-    res.json({ items, total_harga });
+    res.json({ kios_id, items, total_harga });
   } catch (err) {
     console.error('getKeranjang error:', err);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
-
 
 // Update jumlah / catatan item
 const updateKeranjangItem = async (req, res) => {

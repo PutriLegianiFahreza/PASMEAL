@@ -86,7 +86,7 @@ const notifyPembeliPesananSelesai = async (pesananId) => {
   }
 };
 
-//buat pesanan
+//buat pesanan(pembeli)
 const buatPesanan = async (req, res) => {
   const guest_id = req.body.guest_id || getGuestId(req);
   const { tipe_pengantaran, nama_pemesan, no_hp, catatan = '', diantar_ke } = req.body;
@@ -153,7 +153,7 @@ const buatPesanan = async (req, res) => {
   }
 };
 
-// ambil daftar pesanan berdasarkan guest_id
+// ambil daftar pesanan berdasarkan guest_id(penjual)
 const getPesananByGuest = async (req, res) => {
   const guest_id = req.query.guest_id || getGuestId(req);
   if (!guest_id) return res.status(400).json({ message: 'guest_id wajib diisi (query/header/body)' });
@@ -173,7 +173,7 @@ const getPesananByGuest = async (req, res) => {
   }
 };
 
-// ambil detail pesanan by id
+// ambil detail pesanan by id(penjual)
 const getDetailPesanan = async (req, res) => {
   const pesananId = req.params.id;
   try {
@@ -198,6 +198,7 @@ function formatTanggal(date) {
   return `${tanggal} pukul ${waktu}`;
 }
 
+// ambil daftar pesanan masuk (penjual)
 const getPesananMasuk = async (req, res) => {
   const penjualId = req.user.id;
 
@@ -237,7 +238,7 @@ const getPesananMasuk = async (req, res) => {
   }
 };
 
-// Mapping status
+// Mapping status 
 function getStatusLabel(tipe_pengantaran, statusDb) {
   const mapping = {
     ambil_sendiri: {
@@ -258,7 +259,7 @@ function getStatusLabel(tipe_pengantaran, statusDb) {
   return mapping[key][statusDb] || statusDb;
 }
 
-// GET DETAIL PESANAN
+// GET DETAIL PESANAN(penjual)
 const getDetailPesananMasuk = async (req, res) => {
   try {
     const { id } = req.params;
@@ -304,7 +305,7 @@ const getDetailPesananMasuk = async (req, res) => {
   }
 };
 
-//update status pesanan
+//update status pesanan(penjual)
 const updateStatusPesanan = async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -337,7 +338,7 @@ const updateStatusPesanan = async (req, res) => {
   }
 };
 
-//riwayat pesanan
+//riwayat pesanan(penjual)
 const getRiwayatPesanan = async (req, res) => {
   try {
     const pesananQuery = `

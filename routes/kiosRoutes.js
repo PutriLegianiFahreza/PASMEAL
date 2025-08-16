@@ -5,14 +5,14 @@ const upload = require('../middlewares/upload');
 const kiosController = require('../controllers/kiosController');
 const menuController = require('../controllers/menuController'); 
 
-// Profile Kios
+// Profile Kios penjual
 router.get('/profil', authMiddleware, kiosController.getKiosByPenjual); 
 router.put('/profil', authMiddleware, upload.single('gambar_kios'), kiosController.updateKios); 
 
-// Buat kios baru 
+// Buat kios baru penjual
 router.post('/', authMiddleware, kiosController.createKios);
 
-// Endpoint Kios
+// Endpoint Kios untuk pembeli
 router.get('/homepage', kiosController.getKiosHomepage);
 router.get('/search', kiosController.searchKios);
 router.get('/', kiosController.getAllKios);

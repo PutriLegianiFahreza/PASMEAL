@@ -1,7 +1,7 @@
 const pool = require('../config/db');
 const path = require('path');
 
-// Ambil semua menu milik penjual
+// Ambil semua menu (penjual)
 const getAllMenu = async (req, res) => {
   const penjualId = req.user.id;
 
@@ -16,7 +16,7 @@ const getAllMenu = async (req, res) => {
   }
 };
 
-//TAMBAH MENU
+//TAMBAH MENU(penjual)
 const addMenu = async (req, res) => {
   const penjual_id = req.user.id;
   const kios_id = req.user.kios_id;
@@ -52,7 +52,7 @@ const addMenu = async (req, res) => {
   }
 };
 
-//UPDATE MENU
+//UPDATE MENU(penjual)
 const updateMenu = async (req, res) => {
   const penjual_id = req.user.id;
   const menuId = req.params.id;
@@ -97,7 +97,7 @@ const updateMenu = async (req, res) => {
   }
 };
 
-// Ambil detail 1 menu untuk penjual
+// Ambil detail 1 menu (penjual)
 const getMenuById = async (req, res) => {
   const penjualId = req.user.id;
   const menuId = req.params.id;
@@ -117,7 +117,7 @@ const getMenuById = async (req, res) => {
   }
 };
 
-// Hapus menu
+// Hapus menu(penjual)
 const deleteMenu = async (req, res) => {
   const penjualId = req.user.id;
   const menuId = req.params.id;
@@ -138,7 +138,7 @@ const deleteMenu = async (req, res) => {
   }
 };
 
-// Ambil 5 menu terbaru
+// Ambil 5 menu terbaru(pembeli)
 const getNewMenus = async (req, res) => {
   try {
     const result = await pool.query(
@@ -150,7 +150,7 @@ const getNewMenus = async (req, res) => {
   }
 };
 
-// Cari menu berdasarkan nama (untuk pembeli)
+// Cari menu berdasarkan nama (pembeli)
 const searchMenus = async (req, res) => {
   const { query } = req.query;
   if (!query) return res.status(400).json({ message: 'Query pencarian wajib diisi' });
@@ -166,7 +166,7 @@ const searchMenus = async (req, res) => {
   }
 };
 
-// Cari menu berdasarkan nama di kios tertentu
+// Cari menu berdasarkan nama di kios tertentu(pembeli)
 const searchMenusByKios = async (req, res) => {
   const { query } = req.query;
   const kiosId = req.params.id;
@@ -186,7 +186,7 @@ const searchMenusByKios = async (req, res) => {
   }
 };
 
-//nampilin detail menu untuk pembeli 
+//nampilin detail menu (pembeli)
 const getMenuByIdForBuyer = async (req, res) => {
   const menuId = req.params.id;
 
