@@ -4,6 +4,6 @@ const { createTransaction, handleNotification } = require('../controllers/midtra
 const router = express.Router();
 
 router.post('/create-transaction', createTransaction);
-router.post('/notification', handleNotification); // webhook endpoint
+router.post('/notification', handleNotification); 
 
 module.exports = router;

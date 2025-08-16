@@ -1,7 +1,7 @@
 const pool = require('../config/db');
 const getGuestId = require('../utils/getGuestId');
 
-// Tambah atau tambah jumlah jika sudah ada
+// TAMBAH KERANJANG
 const addToKeranjang = async (req, res) => {
   const guest_id = getGuestId(req);
   const { menu_id, jumlah = 1, catatan = '' } = req.body;
@@ -11,7 +11,6 @@ const addToKeranjang = async (req, res) => {
   }
 
   try {
-    // Ambil harga menu dulu
     const hargaResult = await pool.query('SELECT harga FROM menu WHERE id = $1', [menu_id]);
     const harga = hargaResult.rows[0]?.harga || 0;
 
@@ -99,7 +98,6 @@ const updateKeranjangItem = async (req, res) => {
 
     const newJumlah = jumlah ?? check.rows[0].jumlah;
 
-    // Ambil harga untuk hitung total_harga
     const hargaResult = await pool.query('SELECT harga FROM menu WHERE id = $1', [check.rows[0].menu_id]);
     const harga = hargaResult.rows[0]?.harga || 0;
     const total_harga = harga * newJumlah;

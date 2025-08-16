@@ -9,7 +9,7 @@ const pool = new Pool({
 });
 
 pool.connect()
-  .then(() => console.log('✅ Berhasil konek ke database'))
-  .catch(err => console.error('❌ Gagal konek ke database:', err));
+  .then(() => console.log('Berhasil konek ke database'))
+  .catch(err => console.error('Gagal konek ke database:', err));
 
 module.exports = pool;

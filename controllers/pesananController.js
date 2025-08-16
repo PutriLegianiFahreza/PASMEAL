@@ -26,8 +26,9 @@ const notifyPenjual = async (kiosId, pesananId) => {
 
     const firstPesananId = firstOrder.rows.length > 0 ? firstOrder.rows[0].id : pesananId;
 
-    // Link dashboard penjual + langsung ke detail pesanan pertama
-    const linkDashboard = `https://domain.com/dashboard/pesanan/${firstPesananId}`;
+    // Link FE langsung ke detail pesanan
+    const linkDashboard = `https://pas-meal.vercel.app/OrderPage/${firstPesananId}`;
+
     const message = `📢 Pesanan Baru!\nID Pesanan: ${pesananId}\nLihat pesanan: ${linkDashboard}`;
 
     await sendWaMessage(noHpPenjual, message);
@@ -36,10 +37,9 @@ const notifyPenjual = async (kiosId, pesananId) => {
   }
 };
 
-// notif ke pembeli setelah pesanan selesai (lengkap dengan daftar menu)
+// notif ke pembeli setelah pesanan selesai
 const notifyPembeliPesananSelesai = async (pesananId) => {
   try {
-    // Ambil data pesanan
     const pesananRes = await pool.query(
       `SELECT nama_pemesan, no_hp, total_harga, tipe_pengantaran, diantar_ke
        FROM pesanan WHERE id = $1`,
@@ -52,7 +52,6 @@ const notifyPembeliPesananSelesai = async (pesananId) => {
     const noHpPembeli = pesanan.no_hp;
     const namaPembeli = pesanan.nama_pemesan;
 
-    // Ambil detail menu
     const detailRes = await pool.query(
       `SELECT nama_menu, jumlah, harga
        FROM pesanan_detail
@@ -68,17 +67,17 @@ const notifyPembeliPesananSelesai = async (pesananId) => {
       ? `\nDiantar ke: ${pesanan.diantar_ke}`
       : '\nAmbil sendiri di kantin';
 
-    const message = `
-Hai ${namaPembeli}! 🎉
-Pesanan kamu dengan ID ${pesananId} sudah selesai dan berhasil diterima.
-Berikut detail pesananmu:
-${menuList}
-Total: Rp${Number(pesanan.total_harga).toLocaleString()}
-${alamat}
+            const message = `
+        Hai ${namaPembeli}! 🎉
+        Pesanan kamu dengan ID ${pesananId} sudah selesai dan berhasil diterima.
+        Berikut detail pesananmu:
+        ${menuList}
+        Total: Rp${Number(pesanan.total_harga).toLocaleString()}
+        ${alamat}
 
-Terima kasih sudah memesan di kantin kami! 😊
-Selamat menikmati makanannya!
-`;
+        Terima kasih sudah memesan di kantin Universitas Setiabudi! 😊
+        Selamat menikmati makanannya!
+        `;
 
     await sendWaMessage(noHpPembeli, message);
     console.log(`Notifikasi WA ke pembeli ${namaPembeli} (${noHpPembeli}) berhasil dikirim.`);
@@ -115,12 +114,10 @@ const buatPesanan = async (req, res) => {
     const total_harga = items.reduce((s, it) => s + Number(it.harga) * Number(it.jumlah), 0);
     const total_estimasi = items.reduce((s, it) => s + (it.estimasi_menit || 10) * Number(it.jumlah), 0);
 
-    // Buat pesanan dengan status 'pending' dulu
-  const pesananRes = await pool.query(`
-  INSERT INTO pesanan (guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga, status, total_estimasi)
-  VALUES ($1,$2,$3,$4,$5,$6,$7, 'pending', $8) RETURNING *
-`, [guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke || null, total_harga, total_estimasi]);
-
+    const pesananRes = await pool.query(`
+    INSERT INTO pesanan (guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga, status, total_estimasi)
+    VALUES ($1,$2,$3,$4,$5,$6,$7, 'pending', $8) RETURNING *
+  `, [guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke || null, total_harga, total_estimasi]);
 
     const pesanan = pesananRes.rows[0];
     const pesananId = pesanan.id;
@@ -156,7 +153,6 @@ const buatPesanan = async (req, res) => {
   }
 };
 
-
 // ambil daftar pesanan berdasarkan guest_id
 const getPesananByGuest = async (req, res) => {
   const guest_id = req.query.guest_id || getGuestId(req);
@@ -176,7 +172,6 @@ const getPesananByGuest = async (req, res) => {
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
-
 
 // ambil detail pesanan by id
 const getDetailPesanan = async (req, res) => {
@@ -224,7 +219,7 @@ const getPesananMasuk = async (req, res) => {
 
     const formatted = result.rows.map(row => ({
       nomor: row.nomor_antrian,
-      tanggal_bayar: formatTanggal(row.paid_at), // Sudah format misal "22 Juli 2025 15:00"
+      tanggal_bayar: formatTanggal(row.paid_at), 
       nama: row.nama_pemesan,
       no_hp: row.no_hp,
       metode_bayar: row.payment_type?.toUpperCase() || 'QRIS',
@@ -267,8 +262,6 @@ function getStatusLabel(tipe_pengantaran, statusDb) {
 const getDetailPesananMasuk = async (req, res) => {
   try {
     const { id } = req.params;
-
-    // Ambil data pesanan
     const pesanan = await pool.query(
       `SELECT * FROM pesanan WHERE id = $1 LIMIT 1`,
       [id]
@@ -280,7 +273,6 @@ const getDetailPesananMasuk = async (req, res) => {
 
     const p = pesanan.rows[0];
 
-    // Ambil menu dari pesanan_detail
     const detailMenu = await pool.query(
       `SELECT m.nama_menu, pd.jumlah, pd.harga
        FROM pesanan_detail pd
@@ -289,7 +281,6 @@ const getDetailPesananMasuk = async (req, res) => {
       [id]
     );
 
-    // Format response
     const data = {
       id: p.id,
       status_label: getStatusLabel(p.tipe_pengantaran, p.status),
@@ -335,7 +326,6 @@ const updateStatusPesanan = async (req, res) => {
 
     const pesanan = result.rows[0];
 
-    // Jika statusnya 'done', kirim notifikasi WA ke pembeli
     if (status === 'done') {
       notifyPembeliPesananSelesai(pesanan.id);
     }

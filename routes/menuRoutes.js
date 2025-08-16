@@ -9,6 +9,7 @@ const menuController = require('../controllers/menuController');
 router.get('/new', menuController.getNewMenus);
 router.get('/search', menuController.searchMenus);
 router.get('/kios/:id/search', menuController.searchMenusByKios);
+router.get('/:id', menuController.getMenuByIdForBuyer);
 
 // Route khusus penjual (butuh login)
 router.get('/', authMiddleware, menuController.getAllMenu);

@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 
+//dashboard penghitungan data
 const getDashboardData = async (req, res) => {
     try {
         const { kios_id, id: penjual_id } = req.user; // dari token JWT

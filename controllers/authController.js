@@ -5,7 +5,7 @@ const { sendWhatsApp } = require('../utils/wa');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
-// === REGISTER PENJUAL ===
+// REGISTER PENJUAL
 const register = async (req, res) => {
   const { nama, email, no_hp, password, confirmPassword } = req.body;
 
@@ -51,7 +51,7 @@ const register = async (req, res) => {
   }
 };
 
-// === VERIFY OTP ===
+// VERIFY OTP 
 const verifyOtp = async (req, res) => {
   const { kode_otp } = req.body;
 
@@ -92,12 +92,11 @@ const verifyOtp = async (req, res) => {
 };
 
 
-// === resend OTP ===
+// resend OTP 
 const resendOtp = async (req, res) => {
   const { no_hp } = req.body;
 
   try {
-    // Cari penjual berdasarkan no_hp
     const result = await pool.query('SELECT * FROM penjual WHERE no_hp = $1', [no_hp]);
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Akun tidak ditemukan' });
@@ -121,8 +120,8 @@ const resendOtp = async (req, res) => {
       const now = new Date();
       const expiredAt = new Date(latestOtp.expired_at);
 
-      console.log('📌 Server time:', now);
-      console.log('⏰ OTP expired at:', expiredAt);
+      console.log('Server time:', now);
+      console.log('OTP expired at:', expiredAt);
 
       if (expiredAt > now) {
         return res.status(400).json({ message: 'Silakan tunggu hingga OTP sebelumnya kedaluwarsa' });
@@ -131,7 +130,7 @@ const resendOtp = async (req, res) => {
 
     // Generate OTP baru
     const kode_otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const newExpiredAt = new Date(Date.now() + 5 * 60 * 1000); // 5 menit
+    const newExpiredAt = new Date(Date.now() + 3 * 60 * 1000); // 3 menit
 
     await pool.query(`
       INSERT INTO otp (penjual_id, otp_code, expired_at)
@@ -143,11 +142,13 @@ const resendOtp = async (req, res) => {
 
     res.status(200).json({ message: 'OTP baru telah dikirim' });
   } catch (err) {
-    console.error('❌ Error saat resend OTP:', err);
+    console.error('Error saat resend OTP:', err);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
 
+
+//LOGIN
 const login = async (req, res) => {
   const { nama, password, rememberMe } = req.body;
 
@@ -195,7 +196,7 @@ const login = async (req, res) => {
   }
 };
 
-// === forgot password ===
+// forgot password 
 const forgotPassword = async (req, res) => {
   const { no_hp } = req.body;
 
@@ -214,10 +215,10 @@ const forgotPassword = async (req, res) => {
       VALUES ($1, $2, $3)
     `, [penjualId, token, expired_at]);
 
-    // 4. Buat link reset password
+    // link reset password
     const resetLink = `https://pas-meal.vercel.app/NewPassPage?token=${token}`;
 
-    // 5. Kirim via WhatsApp
+    // Kirim via WhatsApp
     const message = `🔐 Permintaan reset password diterima.\n\nKlik link berikut untuk mengganti password kamu:\n${resetLink}\n\nLink ini berlaku selama 15 menit.`;
     await sendWhatsApp(no_hp, message);
 
@@ -225,12 +226,12 @@ const forgotPassword = async (req, res) => {
     res.status(200).json({ message: 'Link reset password telah dikirim via WhatsApp.' });
 
   } catch (error) {
-    console.error('❌ Gagal memproses lupa password:', error);
+    console.error(' Gagal memproses lupa password:', error);
     res.status(500).json({ message: 'Terjadi kesalahan saat memproses lupa password.' });
   }
 };
 
-// == reset password ==
+// reset password
 const resetPassword = async (req, res) => {
   const { token, password, confirmPassword } = req.body;
 
@@ -261,7 +262,7 @@ const resetPassword = async (req, res) => {
   }
 };
 
-// === LOGOUT dengan blacklist token ===
+// LOGOUT
 const logout = async (req, res) => {
   try {
     const authHeader = req.headers.authorization;

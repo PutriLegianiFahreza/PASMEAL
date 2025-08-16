@@ -9,10 +9,10 @@ router.post('/pesanan', pesananController.buatPesanan);
 // Ambil daftar pesanan by guest_id
 router.get('/pesanan', pesananController.getPesananByGuest);
 
-// ✅ Riwayat pesanan (harus sebelum /:id)
+// Riwayat pesanan 
 router.get('/pesanan/riwayat', verifiedMiddleware, pesananController.getRiwayatPesanan);
 
-// Ambil daftar pesanan masuk (urut dari yang paling lama bayar) untuk penjual
+// Ambil daftar pesanan masuk 
 router.get('/pesanan-masuk', verifiedMiddleware, pesananController.getPesananMasuk);
 
 // Ambil detail pesanan masuk (untuk penjual lihat status)

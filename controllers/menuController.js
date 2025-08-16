@@ -16,14 +16,14 @@ const getAllMenu = async (req, res) => {
   }
 };
 
-//add menu
+//TAMBAH MENU
 const addMenu = async (req, res) => {
   const penjual_id = req.user.id;
   const kios_id = req.user.kios_id;
   const { nama_menu, deskripsi, harga, estimasi_menit, status_tersedia } = req.body;
   const foto_menu = req.file ? req.file.filename : null;
 
-  console.log('req.file:', req.file); // debug file upload
+  console.log('req.file:', req.file); 
 
   try {
     const result = await pool.query(
@@ -52,6 +52,7 @@ const addMenu = async (req, res) => {
   }
 };
 
+//UPDATE MENU
 const updateMenu = async (req, res) => {
   const penjual_id = req.user.id;
   const menuId = req.params.id;
@@ -66,7 +67,7 @@ const updateMenu = async (req, res) => {
     }
   });
 
-  // Kalau ada file upload, tambahkan foto_menu
+
   if (req.file) {
     updates.push(`foto_menu = $${values.length + 1}`);
     values.push(req.file.filename);
@@ -76,7 +77,6 @@ const updateMenu = async (req, res) => {
     return res.status(400).json({ message: 'Tidak ada data yang diupdate' });
   }
 
-  // Tambahkan kondisi WHERE
   values.push(menuId);
   values.push(penjual_id);
 
@@ -97,7 +97,7 @@ const updateMenu = async (req, res) => {
   }
 };
 
-// Ambil detail 1 menu
+// Ambil detail 1 menu untuk penjual
 const getMenuById = async (req, res) => {
   const penjualId = req.user.id;
   const menuId = req.params.id;
@@ -186,6 +186,29 @@ const searchMenusByKios = async (req, res) => {
   }
 };
 
+//nampilin detail menu untuk pembeli 
+const getMenuByIdForBuyer = async (req, res) => {
+  const menuId = req.params.id;
+
+  try {
+    const result = await pool.query(
+      `SELECT foto_menu, nama_menu, deskripsi, harga 
+       FROM menu 
+       WHERE id = $1`,
+      [menuId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Menu tidak ditemukan' });
+    }
+
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ message: 'Gagal mengambil detail menu', error });
+  }
+};
+
+
 module.exports = {
   getAllMenu,
   addMenu,
@@ -194,5 +217,6 @@ module.exports = {
   deleteMenu,
   getNewMenus,
   searchMenus,
-  searchMenusByKios
+  searchMenusByKios,
+  getMenuByIdForBuyer
 };

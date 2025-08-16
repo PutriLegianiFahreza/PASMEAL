@@ -25,7 +25,7 @@ const getProfile = async (req, res) => {
   }
 };
 
-// Update data profil penjual (field opsional)
+// Update data profil penjual
 const updateProfil = async (req, res) => {
   const penjualId = req.user?.id;
   const { nama, no_hp, email } = req.body;
@@ -35,7 +35,6 @@ const updateProfil = async (req, res) => {
   }
 
   try {
-    // Ambil data lama dulu
     const current = await pool.query(
       'SELECT nama, no_hp, email FROM penjual WHERE id = $1',
       [penjualId]

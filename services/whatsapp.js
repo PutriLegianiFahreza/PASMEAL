@@ -31,7 +31,6 @@ console.log = (...args) => {
     msg.includes('Closing session') ||
     msg.includes('Closing open session')
   ) {
-    // skip pesan ini biar gak nongol di terminal
     return;
   }
   originalConsoleLog(...args);
@@ -63,49 +62,49 @@ const connectToWhatsApp = async () => {
       const reason = lastDisconnect?.error?.output?.statusCode;
 
       if (qr) {
-        console.log('📱 Scan QR untuk konek WA:');
+        console.log('Scan QR untuk konek WA:');
         qrcode.generate(qr, { small: true });
       }
 
       if (connection === 'open') {
         waReady = true;
-        console.log('✅ WhatsApp terhubung & siap kirim pesan!');
+        console.log('WhatsApp terhubung & siap kirim pesan!');
       } else if (connection === 'close') {
         waReady = false;
-        console.log(`🔌 Koneksi terputus (${reason}).`);
+        console.log(`Koneksi terputus (${reason}).`);
 
         if (reason === DisconnectReason.loggedOut) {
-          console.log('⚠️ WhatsApp sudah logout, silakan scan ulang QR untuk login ulang!');
+          console.log('WhatsApp sudah logout, silakan scan ulang QR untuk login ulang!');
         } else {
-          console.log('⏳ Mencoba reconnect dalam 20 detik...');
+          console.log('Mencoba reconnect dalam 20 detik...');
           setTimeout(connectToWhatsApp, 20000);
         }
       }
     });
 
     sock.ev.on('error', (err) => {
-      console.error('⚠️ Error WA:', err.message);
+      console.error('Error WA:', err.message);
     });
 
     return sock;
   } catch (err) {
-    console.error('❌ Gagal koneksi WA:', err.message);
+    console.error('Gagal koneksi WA:', err.message);
     setTimeout(connectToWhatsApp, 20000);
   }
 };
 
 const sendWaMessage = async (phoneNumber, message) => {
   if (!waReady) {
-    console.log('⚠️ WA belum siap. Pesan tidak terkirim.');
+    console.log('WA belum siap. Pesan tidak terkirim.');
     return false;
   }
   const jid = phoneNumber.replace(/^0/, '62') + '@s.whatsapp.net';
   try {
     await globalSock.sendMessage(jid, { text: message });
-    console.log(`✅ Pesan terkirim ke ${phoneNumber}`);
+    console.log(`Pesan terkirim ke ${phoneNumber}`);
     return true;
   } catch (err) {
-    console.error(`❌ Gagal kirim pesan ke ${phoneNumber}:`, err.message);
+    console.error(`Gagal kirim pesan ke ${phoneNumber}:`, err.message);
     return false;
   }
 };

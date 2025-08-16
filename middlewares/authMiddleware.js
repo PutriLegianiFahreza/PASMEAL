@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const pool = require('../config/db'); // biar bisa query ke DB
+const pool = require('../config/db'); 
 
 // Fungsi cek blacklist token
 const isTokenBlacklisted = async (token) => {
@@ -40,7 +40,7 @@ const authMiddleware = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = await attachKiosId(decoded); // tambahkan kios_id jika belum ada
+    req.user = await attachKiosId(decoded);
     next();
   } catch (err) {
     return res.status(403).json({ message: 'Token tidak valid atau kadaluarsa' });
@@ -68,7 +68,7 @@ const verifiedMiddleware = async (req, res, next) => {
       return res.status(403).json({ message: 'Akun belum diverifikasi' });
     }
 
-    req.user = await attachKiosId(decoded); // tambahkan kios_id jika belum ada
+    req.user = await attachKiosId(decoded);
     next();
   } catch (err) {
     return res.status(403).json({ message: 'Token tidak valid atau kadaluarsa' });

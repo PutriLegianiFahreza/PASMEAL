@@ -2,13 +2,13 @@ const express = require('express');
 const router = express.Router();
 const keranjangController = require('../controllers/keranjangController');
 
-// Tambah ke keranjang (body: guest_id/header x-buyer-id optional)
+// Tambah ke keranjang 
 router.post('/keranjang', keranjangController.addToKeranjang);
 
-// Ambil isi keranjang (query guest_id or header x-buyer-id)
+// Ambil isi keranjang 
 router.get('/keranjang', keranjangController.getKeranjang);
 
-// Update item keranjang (jumlah / catatan)
+// Update item keranjang 
 router.put('/keranjang/:id', keranjangController.updateKeranjangItem);
 
 // Hapus item

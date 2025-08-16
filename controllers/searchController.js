@@ -1,4 +1,3 @@
-// controllers/searchController.js
 const pool = require('../config/db');
 
 const searchAll = async (req, res) => {

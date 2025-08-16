@@ -2,7 +2,7 @@ const pool = require('../config/db');
 const { sendWhatsAppOTP } = require('../utils/wa');
 
 const createKios = async (req, res) => {
-  const penjual_id = req.user.id; // ambil dari token, jangan dari body
+  const penjual_id = req.user.id; 
   const { nama_kios, nama_bank, nomor_rekening } = req.body;
 
   if (!penjual_id) {
@@ -10,36 +10,30 @@ const createKios = async (req, res) => {
   }
 
   try {
-    // Pastikan penjual ada (tidak harus verified karena sudah dicek middleware)
     const penjual = await pool.query('SELECT * FROM penjual WHERE id = $1', [penjual_id]);
     if (penjual.rows.length === 0) {
       return res.status(400).json({ message: 'Penjual tidak valid' });
     }
 
-    // Cek apakah kios sudah ada
     const cek = await pool.query('SELECT * FROM kios WHERE penjual_id = $1', [penjual_id]);
     if (cek.rows.length > 0) {
       return res.status(409).json({ message: 'Kios sudah terdaftar' });
     }
 
-    // Insert kios
     const result = await pool.query(`
       INSERT INTO kios (penjual_id, nama_kios, nama_bank, nomor_rekening)
       VALUES ($1, $2, $3, $4)
       RETURNING *
     `, [penjual_id, nama_kios, nama_bank, nomor_rekening]);
 
-    // Generate OTP
     const kode_otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiredAt = new Date(Date.now() + 3 * 60 * 1000); // 3 menit
 
-    // Simpan OTP
     await pool.query(`
       INSERT INTO otp (penjual_id, otp_code, expired_at, is_used)
       VALUES ($1, $2, $3, FALSE)
     `, [penjual_id, kode_otp, expiredAt]);
 
-    // Kirim OTP ke WhatsApp
     await sendWhatsAppOTP(penjual.rows[0].no_hp, kode_otp);
 
     res.status(201).json({ message: 'Kios berhasil didaftarkan dan OTP telah dikirim ke WhatsApp' });
@@ -50,7 +44,7 @@ const createKios = async (req, res) => {
   }
 };
 
-// Ambil beberapa kios untuk homepage
+// MENAMPILKAN 8 KIOS DI HOMEPAGE
 const getKiosHomepage = async (req, res) => {
   try {
     const result = await pool.query(
@@ -62,7 +56,7 @@ const getKiosHomepage = async (req, res) => {
   }
 };
 
-// Cari kios
+// SEARCH KIOS
 const searchKios = async (req, res) => {
   const { query } = req.query;
   try {
@@ -100,8 +94,8 @@ const getMenusByKios = async (req, res) => {
   }
 };
 
-//profile kios
 
+//profile kios
 const getKiosByPenjual = async (req, res) => {
     const penjualId = req.user?.id;
 
@@ -126,6 +120,7 @@ const getKiosByPenjual = async (req, res) => {
     }
 };
 
+//UPDATE PROFILE KIOS
 const updateKios = async (req, res) => {
     const { nama_kios, deskripsi, nama_bank, nomor_rekening } = req.body;
     const penjualId = req.user?.id;
@@ -135,7 +130,6 @@ const updateKios = async (req, res) => {
     }
 
     try {
-        // Ambil data kios lama
         const { rows, rowCount } = await pool.query(
             'SELECT * FROM kios WHERE penjual_id = $1',
             [penjualId]
@@ -147,12 +141,10 @@ const updateKios = async (req, res) => {
 
         const oldKios = rows[0];
 
-        // Buat URL lengkap untuk gambar jika ada upload baru
         const gambar_kios = req.file 
             ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}` 
             : oldKios.gambar_kios;
 
-        // Update, tapi kalau field baru tidak dikirim pakai value lama
         const result = await pool.query(
             `UPDATE kios 
              SET nama_kios = COALESCE($1, $2),

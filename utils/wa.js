@@ -5,7 +5,7 @@ async function sendWhatsApp(no_hp, message) {
   const sock = getWASocket();
 
   if (!sock) {
-    throw new Error('❌ WhatsApp belum terhubung.');
+    throw new Error(' WhatsApp belum terhubung.');
   }
 
   const nomorWA = no_hp.replace(/^0/, '62') + '@s.whatsapp.net';
@@ -13,8 +13,8 @@ async function sendWhatsApp(no_hp, message) {
     await sock.sendMessage(nomorWA, { text: message });
     console.log(`✅ Pesan WA terkirim ke ${no_hp}`);
   } catch (err) {
-    console.error(`❌ Gagal kirim pesan WA ke ${no_hp}:`, err);
-    throw err; // lempar supaya caller tahu
+    console.error(` Gagal kirim pesan WA ke ${no_hp}:`, err);
+    throw err; 
   }
 }
 
