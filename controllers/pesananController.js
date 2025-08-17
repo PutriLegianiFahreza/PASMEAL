@@ -1,8 +1,9 @@
 const pool = require('../config/db');
+const crypto = require('crypto');
 const getGuestId = require('../utils/getGuestId');
 const { sendWhatsApp: sendWaMessage } = require('../utils/wa');
 
-// Notifikasi ke penjual
+// Notifikasi ke penjual dengan token sementara
 const notifyPenjual = async (kiosId, pesananId) => {
   try {
     // Ambil penjual_id dari kios
@@ -23,34 +24,71 @@ const notifyPenjual = async (kiosId, pesananId) => {
 
     const noHpPenjual = penjualData.rows[0].no_hp;
 
-    // Ambil pesanan pertama yang statusnya pending
-    const firstOrder = await pool.query(
-      `SELECT id FROM pesanan
-       WHERE EXISTS (
-         SELECT 1 
-         FROM pesanan_detail pd 
-         JOIN menu m ON pd.menu_id = m.id 
-         WHERE m.kios_id = $1 AND pd.pesanan_id = pesanan.id
-       )
-       AND status = 'pending'
-       ORDER BY created_at ASC
-       LIMIT 1`,
-      [kiosId]
+    // Generate token sementara (misal berlaku 30 menit)
+    const token = crypto.randomBytes(16).toString('hex');
+
+    // Simpan token + kiosId + pesananId di tabel sementara
+    await pool.query(
+      `INSERT INTO kios_tokens (kios_id, pesanan_id, token, expires_at)
+       VALUES ($1, $2, $3, NOW() + INTERVAL '30 minutes')`,
+      [kiosId, pesananId, token]
     );
 
-    const firstPesananId = firstOrder.rows.length > 0 ? firstOrder.rows[0].id : pesananId;
-
-    // Link frontend langsung ke detail pesanan
-    const linkDashboard = `https://pas-meal.vercel.app/OrderPage?kiosId=${kiosId}`;
+    // Link frontend langsung ke detail pesanan dengan token
+    const linkDashboard = `https://pas-meal.vercel.app/OrderPage?kiosId=${kiosId}&token=${token}`;
 
     const message = `📢 Pesanan Baru!
 ID Pesanan: ${pesananId}
 Lihat pesanan: ${linkDashboard}`;
 
     await sendWaMessage(noHpPenjual, message);
+    console.log(`WA notifikasi pesanan ke penjual (${noHpPenjual}) terkirim.`);
 
   } catch (err) {
     console.error('Gagal kirim WA ke penjual:', err);
+  }
+};
+
+// Verifikasi token sementara penjual & ambil data pesanan
+const verifyTokenKios = async (req, res) => {
+  const { kiosId, token } = req.query;
+
+  if (!kiosId || !token) {
+    return res.status(400).json({ message: 'kiosId dan token wajib diisi' });
+  }
+
+  try {
+    // Cek token di tabel kios_tokens
+    const tokenRes = await pool.query(
+      `SELECT * FROM kios_tokens 
+       WHERE kios_id = $1 AND token = $2 AND expires_at > NOW()`,
+      [kiosId, token]
+    );
+
+    if (tokenRes.rows.length === 0) {
+      return res.status(401).json({ message: 'Token tidak valid atau sudah kadaluarsa' });
+    }
+
+    // Ambil pesanan terkait kios
+    const pesananRes = await pool.query(
+      `SELECT p.id, p.nama_pemesan, p.no_hp, p.total_harga, p.status, p.tipe_pengantaran, p.diantar_ke
+       FROM pesanan p
+       JOIN pesanan_detail pd ON pd.pesanan_id = p.id
+       JOIN menu m ON pd.menu_id = m.id
+       WHERE m.kios_id = $1
+       GROUP BY p.id
+       ORDER BY p.created_at DESC`,
+      [kiosId]
+    );
+
+    res.json({
+      message: 'Token valid',
+      pesanan: pesananRes.rows
+    });
+
+  } catch (err) {
+    console.error('verifyTokenKios error:', err);
+    res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
 
@@ -407,6 +445,7 @@ module.exports =
   getDetailPesanan, 
   getPesananMasuk, 
   notifyPenjual,
+  verifyTokenKios,
   notifyPembeliPesananSelesai,
   getStatusLabel,
   getDetailPesananMasuk,

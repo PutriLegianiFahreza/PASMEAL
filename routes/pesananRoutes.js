@@ -24,4 +24,7 @@ router.patch('/pesanan/:id/status', verifiedMiddleware, pesananController.update
 // Ambil detail pesanan by id (untuk pembeli)
 router.get('/pesanan/:id', pesananController.getDetailPesanan);
 
+// Verifikasi token sementara penjual
+router.get('/kios/verify-token', pesananController.verifyTokenKios);
+
 module.exports = router;
