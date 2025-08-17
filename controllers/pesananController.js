@@ -272,7 +272,7 @@ const getPesananMasuk = async (req, res) => {
       JOIN menu m ON pd.menu_id = m.id
       JOIN kios k ON m.kios_id = k.id
       WHERE k.penjual_id = $1 
-        AND p.status = 'paid'
+        AND p.status = 'paid'   -- hanya yang sudah bayar
       GROUP BY p.id
       ORDER BY p.paid_at ASC
     `, [penjualId]);
@@ -287,7 +287,7 @@ const getPesananMasuk = async (req, res) => {
         ? `Meja ${row.diantar_ke}`
         : 'Ambil Sendiri',
       total_harga: row.total_harga,
-      status: 'Sudah bayar'
+      status: getStatusLabel(row.tipe_pengantaran, row.status) // pakai mapping
     }));
 
     res.json(formatted);
@@ -318,22 +318,25 @@ function getStatusLabel(tipe_pengantaran, statusDb) {
   return mapping[key][statusDb] || statusDb;
 }
 
-// GET DETAIL PESANAN(penjual)
+// GET DETAIL PESANAN MASUK (penjual)
 const getDetailPesananMasuk = async (req, res) => {
+  const { id } = req.params; // id pesanan
+
   try {
-    const { id } = req.params;
-    const pesanan = await pool.query(
+    // Ambil data pesanan
+    const pesananRes = await pool.query(
       `SELECT * FROM pesanan WHERE id = $1 LIMIT 1`,
       [id]
     );
 
-    if (pesanan.rows.length === 0) {
+    if (pesananRes.rows.length === 0) {
       return res.status(404).json({ message: "Pesanan tidak ditemukan" });
     }
 
-    const p = pesanan.rows[0];
+    const p = pesananRes.rows[0];
 
-    const detailMenu = await pool.query(
+    // Ambil detail menu pesanan
+    const detailMenuRes = await pool.query(
       `SELECT m.nama_menu, pd.jumlah, pd.harga
        FROM pesanan_detail pd
        JOIN menu m ON m.id = pd.menu_id
@@ -344,7 +347,7 @@ const getDetailPesananMasuk = async (req, res) => {
     const data = {
       id: p.id,
       status_label: getStatusLabel(p.tipe_pengantaran, p.status),
-      nama: p.nama,
+      nama: p.nama_pemesan,
       no_hp: p.no_hp,
       metode_bayar: p.payment_type?.toUpperCase() || 'QRIS',
       tipe_pengantaran: p.tipe_pengantaran === 'diantar' 
@@ -352,14 +355,15 @@ const getDetailPesananMasuk = async (req, res) => {
         : 'Ambil Sendiri',
       tanggal_bayar: formatTanggal(p.paid_at),
       catatan: p.catatan,
-      total_harga: p.total_harga,
-      status: p.status,
-      menu: detailMenu.rows
+      total_harga: Number(p.total_harga),
+      status: p.status, // status asli dari DB
+      menu: detailMenuRes.rows
     };
 
-    res.json(data);
+    res.status(200).json(data);
+
   } catch (err) {
-    console.error(err);
+    console.error('getDetailPesananMasuk error:', err);
     res.status(500).json({ message: "Gagal mengambil detail pesanan" });
   }
 };
