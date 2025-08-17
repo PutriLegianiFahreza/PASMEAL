@@ -254,7 +254,7 @@ function formatTanggal(date) {
   const timeOptions = { hour: '2-digit', minute: '2-digit' };
   const tanggal = date.toLocaleDateString('id-ID', options);
   const waktu = date.toLocaleTimeString('id-ID', timeOptions);
-  return `${tanggal} pukul ${waktu}`;
+  return `${tanggal} ${waktu}`;
 }
 
 // ambil daftar pesanan masuk (penjual)
