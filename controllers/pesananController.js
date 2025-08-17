@@ -368,6 +368,29 @@ const getDetailPesananMasuk = async (req, res) => {
   }
 };
 
+//untuk badge pesanan masuk
+const countPesananMasuk = async (req, res) => {
+  const penjualId = req.user.id;
+
+  try {
+    const result = await pool.query(`
+  SELECT COUNT(DISTINCT p.id) AS jumlah
+  FROM pesanan p
+  JOIN pesanan_detail pd ON pd.pesanan_id = p.id
+  JOIN menu m ON pd.menu_id = m.id
+  JOIN kios k ON m.kios_id = k.id
+  WHERE k.penjual_id = $1
+    AND p.status IN ('paid', 'processing', 'ready', 'delivering')
+`, [penjualId]);
+
+res.json({ jumlah: parseInt(result.rows[0].jumlah) || 0 });
+
+  } catch (err) {
+    console.error("countPesananMasuk error:", err);
+    res.status(500).json({ message: "Terjadi kesalahan server" });
+  }
+};
+
 //update status pesanan(penjual)
 const updateStatusPesanan = async (req, res) => {
   const { id } = req.params;
@@ -454,5 +477,6 @@ module.exports =
   getStatusLabel,
   getDetailPesananMasuk,
   updateStatusPesanan,
-  getRiwayatPesanan
+  getRiwayatPesanan, 
+  countPesananMasuk
 };

@@ -15,6 +15,9 @@ router.get('/pesanan/riwayat', verifiedMiddleware, pesananController.getRiwayatP
 // Ambil daftar pesanan masuk (penjual)
 router.get('/pesanan-masuk', verifiedMiddleware, pesananController.getPesananMasuk);
 
+// ✅ Hitung jumlah pesanan masuk (penjual) → buat badge
+router.get('/pesanan-masuk/count', verifiedMiddleware, pesananController.countPesananMasuk);
+
 // Ambil detail pesanan masuk (untuk penjual lihat status)
 router.get('/pesanan-masuk/:id', verifiedMiddleware, pesananController.getDetailPesananMasuk);
 
