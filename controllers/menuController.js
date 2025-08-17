@@ -192,7 +192,7 @@ const getMenuByIdForBuyer = async (req, res) => {
 
   try {
     const result = await pool.query(
-      `SELECT foto_menu, nama_menu, deskripsi, harga 
+      `SELECT foto_menu, nama_menu, deskripsi, harga, estimasi_menit
        FROM menu 
        WHERE id = $1`,
       [menuId]
