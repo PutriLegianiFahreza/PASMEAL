@@ -4,18 +4,34 @@ const { authMiddleware, verifiedMiddleware } = require('../middlewares/authMiddl
 const upload = require('../middlewares/upload');
 const menuController = require('../controllers/menuController');
 
-
-// Route publik untuk pembeli
+// Ambil 5 menu terbaru (pembeli)
 router.get('/new', menuController.getNewMenus);
-router.get('/search', menuController.searchMenus);
-router.get('/kios/:id/search', menuController.searchMenusByKios);
-router.get('/:id', menuController.getMenuByIdForBuyer);
 
-// Route khusus penjual (butuh login)
+// Cari menu (pembeli)
+router.get('/search', menuController.searchMenus);
+
+// Cari menu di kios tertentu (pembeli)
+router.get('/kios/:id/search', menuController.searchMenusByKios);
+
+// Ambil semua menu penjual
 router.get('/', authMiddleware, menuController.getAllMenu);
-router.get('/:id', authMiddleware, menuController.getMenuById);
-router.delete('/:id', authMiddleware, menuController.deleteMenu);
-router.post('/', verifiedMiddleware, upload.single('foto_menu'), menuController.addMenu); 
+
+// Pagination untuk penjual
+router.get('/paginated', authMiddleware, menuController.getMenusPaginated);
+
+// Tambah menu (penjual)
+router.post('/', verifiedMiddleware, upload.single('foto_menu'), menuController.addMenu);
+
+// Update menu (penjual)
 router.put('/:id', authMiddleware, upload.single('foto_menu'), menuController.updateMenu);
+
+// Hapus menu (penjual)
+router.delete('/:id', authMiddleware, menuController.deleteMenu);
+
+// Detail menu untuk pembeli
+router.get('/buyer/:id', menuController.getMenuByIdForBuyer);
+
+// Detail menu untuk penjual
+router.get('/seller/:id', authMiddleware, menuController.getMenuById);
 
 module.exports = router;

@@ -1,35 +1,36 @@
 const pool = require('../config/db');
 const path = require('path');
 
+// =======================
+// PENJUAL
+// =======================
+
 // Ambil semua menu (penjual)
 const getAllMenu = async (req, res) => {
   const penjualId = req.user.id;
-
   try {
     const result = await pool.query(
-      'SELECT * FROM menu WHERE penjual_id = $1 ORDER BY id DESC',
+      'SELECT * FROM menu WHERE penjual_id = $1 ORDER BY created_at DESC',
       [penjualId]
     );
     res.status(200).json(result.rows);
   } catch (error) {
-    res.status(500).json({ message: 'Gagal mengambil menu', error });
+    res.status(500).json({ message: 'Gagal mengambil menu', error: error.message });
   }
 };
 
-//TAMBAH MENU(penjual)
+// Tambah menu (penjual)
 const addMenu = async (req, res) => {
   const penjual_id = req.user.id;
   const kios_id = req.user.kios_id;
   const { nama_menu, deskripsi, harga, estimasi_menit, status_tersedia } = req.body;
   const foto_menu = req.file ? req.file.filename : null;
 
-  console.log('req.file:', req.file); 
-
   try {
     const result = await pool.query(
       `INSERT INTO menu 
        (nama_menu, deskripsi, harga, foto_menu, penjual_id, kios_id, estimasi_menit, status_tersedia)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
       [
         nama_menu,
         deskripsi,
@@ -41,32 +42,28 @@ const addMenu = async (req, res) => {
         status_tersedia !== undefined ? status_tersedia : true
       ]
     );
-
-    res.status(201).json({
-      message: 'Menu berhasil ditambahkan',
-      data: result.rows[0],
-    });
+    res.status(201).json({ message: 'Menu berhasil ditambahkan', data: result.rows[0] });
   } catch (error) {
-    console.error('Gagal tambah menu:', error);
     res.status(500).json({ message: 'Terjadi kesalahan server', error: error.message });
   }
 };
 
-//UPDATE MENU(penjual)
+// Update menu (penjual)
 const updateMenu = async (req, res) => {
   const penjual_id = req.user.id;
-  const menuId = req.params.id;
-  const allowedFields = ['nama_menu','harga','deskripsi','estimasi_menit','status_tersedia'];
+  const menuId = parseInt(req.params.id);
+  if (isNaN(menuId)) return res.status(400).json({ message: 'ID menu tidak valid' });
+
+  const allowedFields = ['nama_menu','deskripsi','harga','estimasi_menit','status_tersedia'];
   const updates = [];
   const values = [];
 
-  allowedFields.forEach((field, index) => {
+  allowedFields.forEach(field => {
     if (req.body[field] !== undefined) {
       updates.push(`${field} = $${values.length + 1}`);
       values.push(req.body[field]);
     }
   });
-
 
   if (req.file) {
     updates.push(`foto_menu = $${values.length + 1}`);
@@ -84,100 +81,112 @@ const updateMenu = async (req, res) => {
 
   try {
     const result = await pool.query(query, values);
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: 'Menu tidak ditemukan atau bukan milik kamu' });
-    }
-    res.status(200).json({
-      message: 'Menu berhasil diupdate',
-      data: result.rows[0]
-    });
+    if (result.rowCount === 0) return res.status(404).json({ message: 'Menu tidak ditemukan atau bukan milik kamu' });
+    res.status(200).json({ message: 'Menu berhasil diupdate', data: result.rows[0] });
   } catch (error) {
-    console.error(error);
     res.status(500).json({ message: 'Terjadi kesalahan server', error: error.message });
   }
 };
 
-// Ambil detail 1 menu (penjual)
+// Ambil detail menu (penjual)
 const getMenuById = async (req, res) => {
   const penjualId = req.user.id;
-  const menuId = req.params.id;
+  const menuId = parseInt(req.params.id);
+  if (isNaN(menuId)) return res.status(400).json({ message: 'ID menu tidak valid' });
 
   try {
-    const result = await pool.query(
-      'SELECT * FROM menu WHERE id = $1 AND penjual_id = $2',
-      [menuId, penjualId]
-    );
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: 'Menu tidak ditemukan' });
-    }
-
+    const result = await pool.query('SELECT * FROM menu WHERE id = $1 AND penjual_id = $2', [menuId, penjualId]);
+    if (result.rowCount === 0) return res.status(404).json({ message: 'Menu tidak ditemukan' });
     res.status(200).json(result.rows[0]);
   } catch (error) {
-    res.status(500).json({ message: 'Gagal mengambil detail menu', error });
+    res.status(500).json({ message: 'Gagal mengambil detail menu', error: error.message });
   }
 };
 
-// Hapus menu(penjual)
+// Hapus menu (penjual)
 const deleteMenu = async (req, res) => {
   const penjualId = req.user.id;
-  const menuId = req.params.id;
+  const menuId = parseInt(req.params.id);
+  if (isNaN(menuId)) return res.status(400).json({ message: 'ID menu tidak valid' });
 
   try {
-    const result = await pool.query(
-      'DELETE FROM menu WHERE id = $1 AND penjual_id = $2 RETURNING *',
-      [menuId, penjualId]
-    );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: 'Menu tidak ditemukan atau bukan milik kamu' });
-    }
-
+    const result = await pool.query('DELETE FROM menu WHERE id = $1 AND penjual_id = $2 RETURNING *', [menuId, penjualId]);
+    if (result.rowCount === 0) return res.status(404).json({ message: 'Menu tidak ditemukan atau bukan milik kamu' });
     res.status(200).json({ message: 'Menu berhasil dihapus' });
   } catch (error) {
-    res.status(500).json({ message: 'Gagal menghapus menu', error });
+    res.status(500).json({ message: 'Gagal menghapus menu', error: error.message });
   }
 };
 
-// Ambil 5 menu terbaru(pembeli)
+// Ambil menu dengan pagination (penjual)
+const getMenusPaginated = async (req, res) => {
+  const penjualId = req.user.id;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const offset = (page - 1) * limit;
+
+  try {
+    // Query total menu milik penjual
+    const totalResult = await pool.query(
+      'SELECT COUNT(*) FROM menu WHERE penjual_id = $1',
+      [penjualId]
+    );
+    const total = parseInt(totalResult.rows[0].count);
+
+    // Query data dengan pagination
+    const result = await pool.query(
+      'SELECT * FROM menu WHERE penjual_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+      [penjualId, limit, offset]
+    );
+
+    res.status(200).json({
+      page,
+      limit,
+      total,  // total seluruh menu milik penjual
+      data: result.rows,
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Gagal mengambil menu', error: err.message });
+  }
+};
+
+// =======================
+// PEMBELI
+// =======================
+
+// Ambil 5 menu terbaru (pembeli)
 const getNewMenus = async (req, res) => {
   try {
-    const result = await pool.query(
-      'SELECT * FROM menu ORDER BY created_at DESC LIMIT 5'
-    );
+    const result = await pool.query('SELECT * FROM menu WHERE status_tersedia = true ORDER BY created_at DESC LIMIT 5');
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// Cari menu berdasarkan nama (pembeli)
+// Cari menu (pembeli)
 const searchMenus = async (req, res) => {
   const { query } = req.query;
   if (!query) return res.status(400).json({ message: 'Query pencarian wajib diisi' });
 
   try {
-    const result = await pool.query(
-      'SELECT * FROM menu WHERE nama_menu ILIKE $1',
-      [`%${query}%`]
-    );
+    const result = await pool.query('SELECT * FROM menu WHERE nama_menu ILIKE $1 AND status_tersedia = true', [`%${query}%`]);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// Cari menu berdasarkan nama di kios tertentu(pembeli)
+// Cari menu di kios tertentu (pembeli)
 const searchMenusByKios = async (req, res) => {
   const { query } = req.query;
-  const kiosId = req.params.id;
-
-  if (!query) {
-    return res.status(400).json({ message: 'Query pencarian wajib diisi' });
-  }
+  const kiosId = parseInt(req.params.id);
+  if (!query) return res.status(400).json({ message: 'Query pencarian wajib diisi' });
+  if (isNaN(kiosId)) return res.status(400).json({ message: 'ID kios tidak valid' });
 
   try {
     const result = await pool.query(
-      'SELECT * FROM menu WHERE kios_id = $1 AND nama_menu ILIKE $2',
+      'SELECT * FROM menu WHERE kios_id = $1 AND nama_menu ILIKE $2 AND status_tersedia = true',
       [kiosId, `%${query}%`]
     );
     res.json(result.rows);
@@ -186,25 +195,21 @@ const searchMenusByKios = async (req, res) => {
   }
 };
 
-//nampilin detail menu (pembeli)
+// Detail menu (pembeli)
 const getMenuByIdForBuyer = async (req, res) => {
-  const menuId = req.params.id;
+  const menuId = parseInt(req.params.id);
+  if (isNaN(menuId)) return res.status(400).json({ message: 'ID menu tidak valid' });
 
   try {
     const result = await pool.query(
-      `SELECT foto_menu, nama_menu, deskripsi, harga, estimasi_menit
-       FROM menu 
-       WHERE id = $1`,
+      'SELECT foto_menu, nama_menu, deskripsi, harga, estimasi_menit FROM menu WHERE id = $1 AND status_tersedia = true',
       [menuId]
     );
 
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: 'Menu tidak ditemukan' });
-    }
-
+    if (result.rowCount === 0) return res.status(404).json({ message: 'Menu tidak ditemukan' });
     res.status(200).json(result.rows[0]);
   } catch (error) {
-    res.status(500).json({ message: 'Gagal mengambil detail menu', error });
+    res.status(500).json({ message: 'Gagal mengambil detail menu', error: error.message });
   }
 };
 
@@ -212,11 +217,12 @@ const getMenuByIdForBuyer = async (req, res) => {
 module.exports = {
   getAllMenu,
   addMenu,
-  getMenuById,
   updateMenu,
+  getMenuById,
   deleteMenu,
   getNewMenus,
   searchMenus,
   searchMenusByKios,
-  getMenuByIdForBuyer
+  getMenuByIdForBuyer,
+  getMenusPaginated
 };

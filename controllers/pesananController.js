@@ -69,15 +69,12 @@ const verifyTokenKios = async (req, res) => {
       return res.status(401).json({ message: 'Token tidak valid atau sudah kadaluarsa' });
     }
 
-    // Ambil pesanan terkait kios
+    // Ambil pesanan terkait kios (lebih efisien dengan kios_id di tabel pesanan)
     const pesananRes = await pool.query(
-      `SELECT p.id, p.nama_pemesan, p.no_hp, p.total_harga, p.status, p.tipe_pengantaran, p.diantar_ke
-       FROM pesanan p
-       JOIN pesanan_detail pd ON pd.pesanan_id = p.id
-       JOIN menu m ON pd.menu_id = m.id
-       WHERE m.kios_id = $1
-       GROUP BY p.id
-       ORDER BY p.created_at DESC`,
+      `SELECT id, kios_id, nama_pemesan, no_hp, total_harga, status, tipe_pengantaran, diantar_ke
+       FROM pesanan
+       WHERE kios_id = $1
+       ORDER BY created_at DESC`,
       [kiosId]
     );
 
@@ -97,7 +94,7 @@ const notifyPembeliPesananSelesai = async (pesananId) => {
   try {
     // Ambil data pesanan
     const pesananRes = await pool.query(
-      `SELECT nama_pemesan, no_hp, total_harga, tipe_pengantaran, diantar_ke
+      `SELECT nama_pemesan, no_hp, total_harga, tipe_pengantaran, diantar_ke, kios_id
        FROM pesanan 
        WHERE id = $1`,
       [pesananId]
@@ -168,15 +165,22 @@ const buatPesanan = async (req, res) => {
     `, [guest_id]);
 
     if (k.rows.length === 0) return res.status(400).json({ message: 'Keranjang kosong' });
-
+    
+    // Pastikan semua item dari kios yang sama dan ambil kios_id
     const items = k.rows;
+    const kios_id = items[0].kios_id;
+    if (items.some(item => item.kios_id !== kios_id)) {
+        return res.status(400).json({ message: 'Semua item dalam satu pesanan harus dari kios yang sama.' });
+    }
+
     const total_harga = items.reduce((s, it) => s + Number(it.harga) * Number(it.jumlah), 0);
     const total_estimasi = items.reduce((s, it) => s + (it.estimasi_menit || 10) * Number(it.jumlah), 0);
-
+    
+    // Tambahkan kios_id saat membuat pesanan
     const pesananRes = await pool.query(`
-    INSERT INTO pesanan (guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga, status, total_estimasi)
-    VALUES ($1,$2,$3,$4,$5,$6,$7, 'pending', $8) RETURNING *
-  `, [guest_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke || null, total_harga, total_estimasi]);
+    INSERT INTO pesanan (guest_id, kios_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga, status, total_estimasi)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9) RETURNING *
+    `, [guest_id, kios_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke || null, total_harga, total_estimasi]);
 
     const pesanan = pesananRes.rows[0];
     const pesananId = pesanan.id;
@@ -200,6 +204,9 @@ const buatPesanan = async (req, res) => {
 
     // Hapus keranjang
     await pool.query('DELETE FROM keranjang WHERE guest_id = $1', [guest_id]);
+    
+    // Kirim notifikasi ke penjual
+    await notifyPenjual(kios_id, pesananId);
 
     res.status(201).json({
       message: 'Pesanan berhasil dibuat',
@@ -212,27 +219,44 @@ const buatPesanan = async (req, res) => {
   }
 };
 
-// ambil daftar pesanan berdasarkan guest_id(penjual)
+// ambil daftar pesanan berdasarkan guest_id(pembeli)
 const getPesananByGuest = async (req, res) => {
   const guest_id = req.query.guest_id || getGuestId(req);
-  if (!guest_id) return res.status(400).json({ message: 'guest_id wajib diisi (query/header/body)' });
+  const page = parseInt(req.query.page) || 1;
+  const limit = 5;
+  const offset = (page - 1) * limit;
+
+  if (!guest_id) return res.status(400).json({ message: 'guest_id wajib diisi' });
 
   try {
     const result = await pool.query(`
-      SELECT id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga, total_estimasi, status, created_at
+      SELECT id, kios_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga, total_estimasi, status, created_at
       FROM pesanan
       WHERE guest_id = $1
       ORDER BY created_at DESC
-    `, [guest_id]);
+      LIMIT $2 OFFSET $3
+    `, [guest_id, limit, offset]);
 
-    res.json(result.rows);
+    // total halaman
+    const countRes = await pool.query('SELECT COUNT(*) FROM pesanan WHERE guest_id = $1', [guest_id]);
+    const total = parseInt(countRes.rows[0].count);
+    const totalPages = Math.ceil(total / limit);
+
+    res.json({
+      page,
+      totalPages,
+      limit,
+      total,
+      data: result.rows
+    });
+
   } catch (err) {
     console.error('getPesananByGuest error:', err);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
 
-// ambil detail pesanan by id(penjual)
+// ambil detail pesanan by id(pembeli)
 const getDetailPesanan = async (req, res) => {
   const pesananId = req.params.id;
   try {
@@ -260,37 +284,57 @@ function formatTanggal(date) {
 // ambil daftar pesanan masuk (penjual)
 const getPesananMasuk = async (req, res) => {
   const penjualId = req.user.id;
+  const page = parseInt(req.query.page) || 1;
+  const limit = 5;
+  const offset = (page - 1) * limit;
 
   try {
+    // Ambil data pesanan masuk berdasarkan kios milik penjual
     const result = await pool.query(`
-      SELECT p.id, p.nama_pemesan, p.no_hp, p.total_harga, p.status,
-             p.payment_type, p.tipe_pengantaran, p.diantar_ke,
-             p.paid_at,
+      SELECT p.id, p.kios_id, p.nama_pemesan, p.no_hp, p.total_harga, p.status,
+             p.payment_type, p.tipe_pengantaran, p.diantar_ke, p.paid_at,
              ROW_NUMBER() OVER (ORDER BY p.paid_at ASC) AS nomor_antrian
       FROM pesanan p
-      JOIN pesanan_detail pd ON pd.pesanan_id = p.id
-      JOIN menu m ON pd.menu_id = m.id
-      JOIN kios k ON m.kios_id = k.id
-      WHERE k.penjual_id = $1 
-        AND p.status = 'paid'   -- hanya yang sudah bayar
-      GROUP BY p.id
+      WHERE p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
+        AND p.status IN ('paid','processing','ready','delivering')
       ORDER BY p.paid_at ASC
+      LIMIT $2 OFFSET $3
+    `, [penjualId, limit, offset]);
+
+    // Hitung total pesanan masuk
+    const countRes = await pool.query(`
+      SELECT COUNT(id) AS total
+      FROM pesanan
+      WHERE kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
+        AND status IN ('paid','processing','ready','delivering')
     `, [penjualId]);
+
+    const total = parseInt(countRes.rows[0].total);
+    const totalPages = Math.ceil(total / limit);
 
     const formatted = result.rows.map(row => ({
       nomor: row.nomor_antrian,
-      tanggal_bayar: formatTanggal(row.paid_at), 
+      id_pesanan: row.id,
+      kios_id: row.kios_id,
+      tanggal_bayar: formatTanggal(row.paid_at),
       nama: row.nama_pemesan,
       no_hp: row.no_hp,
       metode_bayar: row.payment_type?.toUpperCase() || 'QRIS',
-      tipe_pengantaran: row.tipe_pengantaran === 'meja'
+      tipe_pengantaran: row.tipe_pengantaran === 'diantar'
         ? `Meja ${row.diantar_ke}`
         : 'Ambil Sendiri',
       total_harga: row.total_harga,
-      status: getStatusLabel(row.tipe_pengantaran, row.status) // pakai mapping
+      status: getStatusLabel(row.tipe_pengantaran, row.status)
     }));
 
-    res.json(formatted);
+    res.json({
+      page,
+      totalPages,
+      limit,
+      total,
+      data: formatted
+    });
+
   } catch (err) {
     console.error("getPesananMasuk error:", err);
     res.status(500).json({ message: "Terjadi kesalahan server" });
@@ -346,6 +390,7 @@ const getDetailPesananMasuk = async (req, res) => {
 
     const data = {
       id: p.id,
+      kios_id: p.kios_id, // Tambahkan kios_id
       status_label: getStatusLabel(p.tipe_pengantaran, p.status),
       nama: p.nama_pemesan,
       no_hp: p.no_hp,
@@ -374,16 +419,13 @@ const countPesananMasuk = async (req, res) => {
 
   try {
     const result = await pool.query(`
-  SELECT COUNT(DISTINCT p.id) AS jumlah
-  FROM pesanan p
-  JOIN pesanan_detail pd ON pd.pesanan_id = p.id
-  JOIN menu m ON pd.menu_id = m.id
-  JOIN kios k ON m.kios_id = k.id
-  WHERE k.penjual_id = $1
-    AND p.status IN ('paid', 'processing', 'ready', 'delivering')
-`, [penjualId]);
+      SELECT COUNT(id) AS jumlah
+      FROM pesanan
+      WHERE kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
+        AND status IN ('paid', 'processing', 'ready', 'delivering')
+    `, [penjualId]);
 
-res.json({ jumlah: parseInt(result.rows[0].jumlah) || 0 });
+    res.json({ jumlah: parseInt(result.rows[0].jumlah) || 0 });
 
   } catch (err) {
     console.error("countPesananMasuk error:", err);
@@ -426,43 +468,43 @@ const updateStatusPesanan = async (req, res) => {
 
 //riwayat pesanan(penjual)
 const getRiwayatPesanan = async (req, res) => {
+  const penjualId = req.user.id;
+  const page = parseInt(req.query.page) || 1;
+  const limit = 5;
+  const offset = (page - 1) * limit;
+
   try {
-    const pesananQuery = `
-      SELECT p.id, p.nama_pemesan, p.no_hp, 
+    const pesananRes = await pool.query(`
+      SELECT p.id, p.kios_id, p.nama_pemesan, p.no_hp, 
              CASE WHEN p.tipe_pengantaran = 'diantar' THEN p.diantar_ke ELSE NULL END AS alamat_pengantaran,
              p.payment_type, p.tipe_pengantaran, p.total_harga, p.status,
              TO_CHAR(p.created_at, 'DD Mon YYYY HH24:MI') AS tanggal,
              p.catatan
       FROM pesanan p
-      WHERE p.status = 'done'
+      WHERE p.status = 'done' AND p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
       ORDER BY p.created_at DESC
-    `;
+      LIMIT $2 OFFSET $3
+    `, [penjualId, limit, offset]);
 
-    const pesananResult = await pool.query(pesananQuery);
-    console.log('pesananResult.rows:', pesananResult.rows);
+    const countRes = await pool.query(`
+      SELECT COUNT(id) AS total
+      FROM pesanan
+      WHERE status = 'done' AND kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
+    `, [penjualId]);
 
-    if (pesananResult.rows.length === 0) {
-      return res.json({ message: 'Riwayat Pesanan Kosong', data: [] });
-    }
+    const total = parseInt(countRes.rows[0].total);
+    const totalPages = Math.ceil(total / limit);
 
-    const pesananIds = pesananResult.rows.map(p => p.id);
-    const detailQuery = `
-      SELECT pd.pesanan_id, pd.nama_menu, pd.jumlah, pd.harga
-      FROM pesanan_detail pd
-      WHERE pd.pesanan_id = ANY($1::int[])
-    `;
-    const detailResult = await pool.query(detailQuery, [pesananIds]);
-    console.log('detailResult.rows:', detailResult.rows);
-
-    const data = pesananResult.rows.map(pesanan => {
-      const detail = detailResult.rows.filter(d => d.pesanan_id === pesanan.id);
-      return { ...pesanan, detail };
+    res.json({
+      page,
+      totalPages,
+      limit,
+      total,
+      data: pesananRes.rows
     });
-
-    res.json({ message: 'Berhasil ambil riwayat pesanan', data });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Terjadi kesalahan server', error: error.message });
+  } catch (err) {
+    console.error('getRiwayatPesanan error:', err);
+    res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
 
