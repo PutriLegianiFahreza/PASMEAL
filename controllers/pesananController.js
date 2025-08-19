@@ -141,8 +141,11 @@ const buatPesanan = async (req, res) => {
 
   try {
     const keranjangRes = await client.query(
-      `SELECT k.id AS keranjang_id, k.menu_id, k.jumlah, m.nama_menu, m.harga, m.foto_menu, m.kios_id
-       FROM keranjang k JOIN menu m ON k.menu_id = m.id WHERE k.guest_id = $1`,
+      `SELECT k.id AS keranjang_id, k.menu_id, k.jumlah, 
+              m.nama_menu, m.harga, m.foto_menu, m.kios_id, m.estimasi_menit
+       FROM keranjang k 
+       JOIN menu m ON k.menu_id = m.id 
+       WHERE k.guest_id = $1`,
       [guest_id]
     );
     if (keranjangRes.rows.length === 0) {
@@ -157,17 +160,30 @@ const buatPesanan = async (req, res) => {
 
     await client.query('BEGIN');
 
-    const total_harga = items.reduce((sum, item) => sum + Number(item.harga) * Number(item.jumlah), 0);
+    const total_harga = items.reduce(
+      (sum, item) => sum + Number(item.harga) * Number(item.jumlah),
+      0
+    );
+
+    // Hitung estimasi waktu (ambil estimasi paling lama)
+    const total_estimasi = Math.max(
+      ...items.map(item => Number(item.estimasi_menit) || 0)
+    );
 
     const pesananRes = await client.query(
-      `INSERT INTO pesanan (guest_id, kios_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending') RETURNING *`,
-      [guest_id, kios_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke || null, total_harga]
+      `INSERT INTO pesanan 
+        (guest_id, kios_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga, total_estimasi, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending') 
+       RETURNING *`,
+      [guest_id, kios_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke || null, total_harga, total_estimasi]
     );
     const pesanan = pesananRes.rows[0];
 
     const insertDetailQuery =
-      'INSERT INTO pesanan_detail (pesanan_id, menu_id, nama_menu, harga, foto_menu, jumlah, subtotal) VALUES ($1, $2, $3, $4, $5, $6, $7)';
+      `INSERT INTO pesanan_detail 
+        (pesanan_id, menu_id, nama_menu, harga, foto_menu, jumlah, subtotal, estimasi_menit) 
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`;
+
     for (const item of items) {
       await client.query(insertDetailQuery, [
         pesanan.id,
@@ -177,6 +193,7 @@ const buatPesanan = async (req, res) => {
         item.foto_menu,
         item.jumlah,
         Number(item.harga) * Number(item.jumlah),
+        item.estimasi_menit || 0
       ]);
     }
 
@@ -192,7 +209,7 @@ const buatPesanan = async (req, res) => {
     console.error('buatPesanan error:', err);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   } finally {
-    client.release(); // cukup sekali
+    client.release(); // selalu dilepas
   }
 };
 
