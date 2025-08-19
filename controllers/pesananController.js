@@ -126,8 +126,6 @@ const notifyPembeliPesananSelesai = async (pesananId) => {
  }
 };
 
-// [PEMBELI] Membuat pesanan baru
-// ✅ PERBAIKAN: Menggunakan Transaksi Database untuk menjamin integritas data
 const buatPesanan = async (req, res) => {
   const guest_id = req.body.guest_id || getGuestId(req);
   const { tipe_pengantaran, nama_pemesan, no_hp, catatan = '', diantar_ke } = req.body;
@@ -139,7 +137,7 @@ const buatPesanan = async (req, res) => {
     return res.status(400).json({ message: 'Alamat pengantaran (diantar_ke) wajib diisi.' });
   }
 
-  const client = await pool.connect(); // Ambil koneksi dari pool untuk transaksi
+  const client = await pool.connect();
 
   try {
     const keranjangRes = await client.query(
@@ -148,22 +146,19 @@ const buatPesanan = async (req, res) => {
       [guest_id]
     );
     if (keranjangRes.rows.length === 0) {
-      // Tidak perlu rollback karena belum ada perubahan, cukup release client
-      client.release();
       return res.status(400).json({ message: 'Keranjang kosong' });
     }
 
     const items = keranjangRes.rows;
     const kios_id = items[0].kios_id;
     if (items.some(item => item.kios_id !== kios_id)) {
-      client.release();
       return res.status(400).json({ message: 'Semua item dalam satu pesanan harus dari kios yang sama.' });
     }
 
-    await client.query('BEGIN'); // Memulai transaksi
+    await client.query('BEGIN');
 
     const total_harga = items.reduce((sum, item) => sum + Number(item.harga) * Number(item.jumlah), 0);
-    
+
     const pesananRes = await client.query(
       `INSERT INTO pesanan (guest_id, kios_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending') RETURNING *`,
@@ -171,28 +166,35 @@ const buatPesanan = async (req, res) => {
     );
     const pesanan = pesananRes.rows[0];
 
-    const insertDetailQuery = 'INSERT INTO pesanan_detail (pesanan_id, menu_id, nama_menu, harga, foto_menu, jumlah, subtotal) VALUES ($1, $2, $3, $4, $5, $6, $7)';
+    const insertDetailQuery =
+      'INSERT INTO pesanan_detail (pesanan_id, menu_id, nama_menu, harga, foto_menu, jumlah, subtotal) VALUES ($1, $2, $3, $4, $5, $6, $7)';
     for (const item of items) {
-      await client.query(insertDetailQuery, [pesanan.id, item.menu_id, item.nama_menu, item.harga, item.foto_menu, item.jumlah, Number(item.harga) * Number(item.jumlah)]);
+      await client.query(insertDetailQuery, [
+        pesanan.id,
+        item.menu_id,
+        item.nama_menu,
+        item.harga,
+        item.foto_menu,
+        item.jumlah,
+        Number(item.harga) * Number(item.jumlah),
+      ]);
     }
 
     await client.query('DELETE FROM keranjang WHERE guest_id = $1', [guest_id]);
 
-    await client.query('COMMIT'); // Menyimpan semua perubahan jika berhasil
+    await client.query('COMMIT');
 
     await notifyPenjual(kios_id, pesanan.id);
 
     res.status(201).json({ message: 'Pesanan berhasil dibuat', pesanan });
-
   } catch (err) {
-    await client.query('ROLLBACK'); // Membatalkan semua perubahan jika terjadi error
+    await client.query('ROLLBACK');
     console.error('buatPesanan error:', err);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   } finally {
-    client.release(); // Selalu kembalikan koneksi ke pool
+    client.release(); // cukup sekali
   }
 };
-
 
 // [PEMBELI] Mengambil daftar pesanan berdasarkan guest_id
 const getPesananByGuest = async (req, res) => {
