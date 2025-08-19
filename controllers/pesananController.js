@@ -181,8 +181,8 @@ const buatPesanan = async (req, res) => {
 
     const insertDetailQuery =
       `INSERT INTO pesanan_detail 
-        (pesanan_id, menu_id, nama_menu, harga, foto_menu, jumlah, subtotal, estimasi_menit) 
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`;
+        (pesanan_id, menu_id, nama_menu, harga, foto_menu, jumlah, subtotal) 
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`;
 
     for (const item of items) {
       await client.query(insertDetailQuery, [
@@ -192,8 +192,7 @@ const buatPesanan = async (req, res) => {
         item.harga,
         item.foto_menu,
         item.jumlah,
-        Number(item.harga) * Number(item.jumlah),
-        item.estimasi_menit || 0
+        Number(item.harga) * Number(item.jumlah)
       ]);
     }
 
@@ -212,6 +211,7 @@ const buatPesanan = async (req, res) => {
     client.release(); // selalu dilepas
   }
 };
+
 
 // [PEMBELI] Mengambil daftar pesanan berdasarkan guest_id
 const getPesananByGuest = async (req, res) => {
