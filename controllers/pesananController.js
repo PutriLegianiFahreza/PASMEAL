@@ -165,9 +165,10 @@ const buatPesanan = async (req, res) => {
       0
     );
 
-    // Hitung estimasi waktu (ambil estimasi paling lama)
-    const total_estimasi = Math.max(
-      ...items.map(item => Number(item.estimasi_menit) || 0)
+    // ✅ Hitung total estimasi (akumulasi semua item × jumlah)
+    const total_estimasi = items.reduce(
+      (sum, item) => sum + (Number(item.estimasi_menit) || 0) * Number(item.jumlah),
+      0
     );
 
     const pesananRes = await client.query(
