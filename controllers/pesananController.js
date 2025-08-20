@@ -342,7 +342,7 @@ const getDetailPesananMasuk = async (req, res) => {
    nama: p.nama_pemesan,
    no_hp: p.no_hp,
    metode_bayar: p.payment_type?.toUpperCase() || 'QRIS',
-   tipe_pengantaran: p.tipe_pengantaran === 'diantar' ? `Diantar ke Meja ${p.diantar_ke}` : 'Ambil Sendiri',
+   tipe_pengantaran: p.tipe_pengantaran === 'diantar' ? `${p.diantar_ke}` : 'Ambil Sendiri',
    diantar_ke: p.diantar_ke,
    tanggal_bayar: formatTanggal(p.paid_at),
    catatan: p.catatan,
