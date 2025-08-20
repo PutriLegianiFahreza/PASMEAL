@@ -225,10 +225,10 @@ const getPesananByGuest = async (req, res) => {
 
  try {
   const result = await pool.query(
-   `SELECT id, kios_id, tipe_pengantaran, nama_pemesan, total_harga, status, created_at
+  `SELECT id, kios_id, tipe_pengantaran, nama_pemesan, total_harga, total_estimasi, status, created_at
    FROM pesanan WHERE guest_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-   [guest_id, limit, offset]
-  );
+  [guest_id, limit, offset]
+);
   const countRes = await pool.query('SELECT COUNT(*) FROM pesanan WHERE guest_id = $1', [guest_id]);
   const total = parseInt(countRes.rows[0].count);
   const totalPages = Math.ceil(total / limit);
@@ -300,18 +300,19 @@ const getPesananMasuk = async (req, res) => {
   const totalPages = Math.ceil(total / limit);
     
   const formattedData = result.rows.map(row => ({
-   id: row.id,
-   nomor_antrian: row.nomor_antrian,
-   pesanan_id : row.id,
-   kios_id: row.kios_id,
-   tanggal_bayar: formatTanggal(row.paid_at),
-   nama: row.nama_pemesan,
-   no_hp: row.no_hp,
-   metode_bayar: row.payment_type?.toUpperCase() || 'QRIS',
-   tipe_pengantaran: row.tipe_pengantaran === 'diantar' ? ` ${row.diantar_ke}` : 'Ambil Sendiri',
-   total_harga: row.total_harga,
-   status: getStatusLabel(row.tipe_pengantaran, row.status)
-  }));
+  id: row.id,
+  nomor_antrian: row.nomor_antrian,
+  pesanan_id : row.id,
+  kios_id: row.kios_id,
+  tanggal_bayar: formatTanggal(row.paid_at),
+  nama: row.nama_pemesan,
+  no_hp: row.no_hp,
+  metode_bayar: row.payment_type?.toUpperCase() || 'QRIS',
+  tipe_pengantaran: row.tipe_pengantaran === 'diantar' ? ` ${row.diantar_ke}` : 'Ambil Sendiri',
+  total_harga: row.total_harga,
+  total_estimasi: row.total_estimasi, // ✅ tambahin ini
+  status: getStatusLabel(row.tipe_pengantaran, row.status)
+}));
 
   res.json({ page, totalPages, limit, total, data: formattedData });
  } catch (err) {
@@ -336,20 +337,21 @@ const getDetailPesananMasuk = async (req, res) => {
     
     // ✅ PERBAIKAN: Format tipe_pengantaran dibuat konsisten dan lebih deskriptif
   const data = {
-   id: p.id,
-   kios_id: p.kios_id,
-   status_label: getStatusLabel(p.tipe_pengantaran, p.status),
-   nama: p.nama_pemesan,
-   no_hp: p.no_hp,
-   metode_bayar: p.payment_type?.toUpperCase() || 'QRIS',
-   tipe_pengantaran: p.tipe_pengantaran === 'diantar' ? `${p.diantar_ke}` : 'Ambil Sendiri',
-   diantar_ke: p.diantar_ke,
-   tanggal_bayar: formatTanggal(p.paid_at),
-   catatan: p.catatan,
-   total_harga: Number(p.total_harga),
-   status: p.status,
-   menu: detailMenuRes.rows
-  };
+  id: p.id,
+  kios_id: p.kios_id,
+  status_label: getStatusLabel(p.tipe_pengantaran, p.status),
+  nama: p.nama_pemesan,
+  no_hp: p.no_hp,
+  metode_bayar: p.payment_type?.toUpperCase() || 'QRIS',
+  tipe_pengantaran: p.tipe_pengantaran === 'diantar' ? `${p.diantar_ke}` : 'Ambil Sendiri',
+  diantar_ke: p.diantar_ke,
+  tanggal_bayar: formatTanggal(p.paid_at),
+  catatan: p.catatan,
+  total_harga: Number(p.total_harga),
+  total_estimasi: Number(p.total_estimasi), // ✅ tambahin ini
+  status: p.status,
+  menu: detailMenuRes.rows
+};
   res.status(200).json(data);
  } catch (err) {
   console.error('getDetailPesananMasuk error:', err);
@@ -412,7 +414,7 @@ const getRiwayatPesanan = async (req, res) => {
 
  try {
   const pesananRes = await pool.query(
-   `SELECT id, kios_id, nama_pemesan, total_harga, status,
+   `SELECT id, kios_id, nama_pemesan, total_harga, total_estimasi, status,
        TO_CHAR(created_at, 'DD Mon YYYY, HH24:MI') AS tanggal
    FROM pesanan
    WHERE status = 'done' AND kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
