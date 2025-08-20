@@ -117,7 +117,14 @@ const notifyPembeliPesananSelesai = async (pesananId) => {
   const menuList = detailRes.rows.map(item => `${item.nama_menu} x${item.jumlah} = Rp${(item.harga * item.jumlah).toLocaleString('id-ID')}`).join('\n');
   const alamat = pesanan.tipe_pengantaran === 'diantar' ? `\nDiantar ke: ${pesanan.diantar_ke}` : '\nAmbil sendiri di kantin';
 
-  const message = `Hai ${pesanan.nama_pemesan}! 🎉\nPesanan kamu dengan ID ${pesananId} sudah selesai dan berhasil diterima.\nBerikut detail pesananmu:\n${menuList}\nTotal: Rp${Number(pesanan.total_harga).toLocaleString('id-ID')}${alamat}\n\nTerima kasih sudah memesan di kantin Universitas Setiabudi! 😊\nSelamat menikmati makanannya!`;
+  const message = `Hai ${pesanan.nama_pemesan}! 🎉
+Pesanan kamu sudah selesai dan berhasil diterima.
+Berikut detail pesananmu:
+${menuList}
+Total: Rp${Number(pesanan.total_harga).toLocaleString('id-ID')}${alamat}
+
+Terima kasih sudah memesan di kantin Universitas Setiabudi! 😊
+Selamat menikmati 🍔🥤!`;
 
   await sendWaMessage(pesanan.no_hp, message);
   console.log(`Notifikasi WA ke pembeli ${pesanan.nama_pemesan} (${pesanan.no_hp}) berhasil dikirim.`);
