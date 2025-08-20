@@ -308,7 +308,7 @@ const getPesananMasuk = async (req, res) => {
    nama: row.nama_pemesan,
    no_hp: row.no_hp,
    metode_bayar: row.payment_type?.toUpperCase() || 'QRIS',
-   tipe_pengantaran: row.tipe_pengantaran === 'diantar' ? `Meja ${row.diantar_ke}` : 'Ambil Sendiri',
+   tipe_pengantaran: row.tipe_pengantaran === 'diantar' ? ` ${row.diantar_ke}` : 'Ambil Sendiri',
    total_harga: row.total_harga,
    status: getStatusLabel(row.tipe_pengantaran, row.status)
   }));
