@@ -124,7 +124,7 @@ ${menuList}
 Total: Rp${Number(pesanan.total_harga).toLocaleString('id-ID')}${alamat}
 
 Terima kasih sudah memesan di kantin Universitas Setiabudi! 😊
-Selamat menikmati 🍔🥤!`;
+Selamat menikmati 🍽️!`;
 
   await sendWaMessage(pesanan.no_hp, message);
   console.log(`Notifikasi WA ke pembeli ${pesanan.nama_pemesan} (${pesanan.no_hp}) berhasil dikirim.`);
