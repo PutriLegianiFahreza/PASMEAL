@@ -280,7 +280,7 @@ const getDetailPesanan = async (req, res) => {
 const getPesananMasuk = async (req, res) => {
  const penjualId = req.user.id;
  const page = parseInt(req.query.page) || 1;
- const limit = 10;
+ const limit = 8;
  const offset = (page - 1) * limit;
 
  try {
@@ -459,7 +459,7 @@ const updateStatusPesanan = async (req, res) => {
 const getRiwayatPesanan = async (req, res) => {
  const penjualId = req.user.id;
  const page = parseInt(req.query.page) || 1;
- const limit = 10;
+ const limit = 8;
  const offset = (page - 1) * limit;
 
  try {
