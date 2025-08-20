@@ -280,8 +280,7 @@ const getPesananMasuk = async (req, res) => {
  try {
   const result = await pool.query(
    `SELECT p.id, p.kios_id, p.nama_pemesan, p.no_hp, p.total_harga, p.status,
-       p.payment_type, p.tipe_pengantaran, p.diantar_ke, p.paid_at,
-       ROW_NUMBER() OVER (ORDER BY p.paid_at ASC) AS nomor_antrian
+       p.payment_type, p.tipe_pengantaran, p.diantar_ke, p.paid_at, p.total_estimasi
    FROM pesanan p
    WHERE p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
     AND p.status IN ('paid', 'processing', 'ready', 'delivering')
@@ -300,19 +299,18 @@ const getPesananMasuk = async (req, res) => {
   const totalPages = Math.ceil(total / limit);
     
   const formattedData = result.rows.map(row => ({
-  id: row.id,
-  nomor_antrian: row.nomor_antrian,
-  pesanan_id : row.id,
-  kios_id: row.kios_id,
-  tanggal_bayar: formatTanggal(row.paid_at),
-  nama: row.nama_pemesan,
-  no_hp: row.no_hp,
-  metode_bayar: row.payment_type?.toUpperCase() || 'QRIS',
-  tipe_pengantaran: row.tipe_pengantaran === 'diantar' ? ` ${row.diantar_ke}` : 'Ambil Sendiri',
-  total_harga: row.total_harga,
-  total_estimasi: row.total_estimasi, // ✅ tambahin ini
-  status: getStatusLabel(row.tipe_pengantaran, row.status)
-}));
+    id: row.id,
+    pesanan_id: row.id,
+    kios_id: row.kios_id,
+    tanggal_bayar: formatTanggal(row.paid_at),
+    nama: row.nama_pemesan,
+    no_hp: row.no_hp,
+    metode_bayar: row.payment_type?.toUpperCase() || 'QRIS',
+    tipe_pengantaran: row.tipe_pengantaran === 'diantar' ? ` ${row.diantar_ke}` : 'Ambil Sendiri',
+    total_harga: row.total_harga,
+    total_estimasi: row.total_estimasi,
+    status: getStatusLabel(row.tipe_pengantaran, row.status)
+  }));
 
   res.json({ page, totalPages, limit, total, data: formattedData });
  } catch (err) {
@@ -320,6 +318,7 @@ const getPesananMasuk = async (req, res) => {
   res.status(500).json({ message: "Terjadi kesalahan server" });
  }
 };
+
 
 // [PENJUAL] Mengambil detail pesanan masuk
 const getDetailPesananMasuk = async (req, res) => {
