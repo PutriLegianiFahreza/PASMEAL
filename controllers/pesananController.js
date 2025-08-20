@@ -269,7 +269,6 @@ const getDetailPesanan = async (req, res) => {
  }
 };
 
-
 // [PENJUAL] Mengambil daftar pesanan masuk
 const getPesananMasuk = async (req, res) => {
  const penjualId = req.user.id;
@@ -280,7 +279,8 @@ const getPesananMasuk = async (req, res) => {
  try {
   const result = await pool.query(
    `SELECT p.id, p.kios_id, p.nama_pemesan, p.no_hp, p.total_harga, p.status,
-       p.payment_type, p.tipe_pengantaran, p.diantar_ke, p.paid_at, p.total_estimasi
+       p.payment_type, p.tipe_pengantaran, p.diantar_ke, p.paid_at,
+       ROW_NUMBER() OVER (ORDER BY p.paid_at ASC) AS nomor_antrian
    FROM pesanan p
    WHERE p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
     AND p.status IN ('paid', 'processing', 'ready', 'delivering')
@@ -299,18 +299,19 @@ const getPesananMasuk = async (req, res) => {
   const totalPages = Math.ceil(total / limit);
     
   const formattedData = result.rows.map(row => ({
-    id: row.id,
-    pesanan_id: row.id,
-    kios_id: row.kios_id,
-    tanggal_bayar: formatTanggal(row.paid_at),
-    nama: row.nama_pemesan,
-    no_hp: row.no_hp,
-    metode_bayar: row.payment_type?.toUpperCase() || 'QRIS',
-    tipe_pengantaran: row.tipe_pengantaran === 'diantar' ? ` ${row.diantar_ke}` : 'Ambil Sendiri',
-    total_harga: row.total_harga,
-    total_estimasi: row.total_estimasi,
-    status: getStatusLabel(row.tipe_pengantaran, row.status)
-  }));
+  id: row.id,
+  nomor_antrian: row.nomor_antrian,
+  pesanan_id : row.id,
+  kios_id: row.kios_id,
+  tanggal_bayar: formatTanggal(row.paid_at),
+  nama: row.nama_pemesan,
+  no_hp: row.no_hp,
+  metode_bayar: row.payment_type?.toUpperCase() || 'QRIS',
+  tipe_pengantaran: row.tipe_pengantaran === 'diantar' ? ` ${row.diantar_ke}` : 'Ambil Sendiri',
+  total_harga: row.total_harga,
+  total_estimasi: row.total_estimasi, // ✅ tambahin ini
+  status: getStatusLabel(row.tipe_pengantaran, row.status)
+}));
 
   res.json({ page, totalPages, limit, total, data: formattedData });
  } catch (err) {
@@ -319,38 +320,52 @@ const getPesananMasuk = async (req, res) => {
  }
 };
 
-
 // [PENJUAL] Mengambil detail pesanan masuk
 const getDetailPesananMasuk = async (req, res) => {
  try {
-  const pesananRes = await pool.query('SELECT * FROM pesanan WHERE id = $1', [req.params.id]);
-  if (pesananRes.rows.length === 0) {
+  // Ambil pesanan + nomor antrian
+  const pesananRes = await pool.query(
+   `SELECT p.*, 
+       ROW_NUMBER() OVER (ORDER BY p.paid_at ASC) AS nomor_antrian
+    FROM pesanan p
+    WHERE p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
+      AND p.status IN ('paid', 'processing', 'ready', 'delivering')
+   `,
+   [req.user.id]
+  );
+
+  // Cari pesanan berdasarkan ID
+  const p = pesananRes.rows.find(row => row.id == req.params.id);
+  if (!p) {
    return res.status(404).json({ message: "Pesanan tidak ditemukan" });
   }
-  const p = pesananRes.rows[0];
 
+  // Detail menu
   const detailMenuRes = await pool.query(
-   `SELECT pd.nama_menu, pd.jumlah, pd.harga FROM pesanan_detail pd WHERE pd.pesanan_id = $1`,
+   `SELECT pd.nama_menu, pd.jumlah, pd.harga 
+    FROM pesanan_detail pd 
+    WHERE pd.pesanan_id = $1`,
    [req.params.id]
   );
-    
-    // ✅ PERBAIKAN: Format tipe_pengantaran dibuat konsisten dan lebih deskriptif
+
   const data = {
-  id: p.id,
-  kios_id: p.kios_id,
-  status_label: getStatusLabel(p.tipe_pengantaran, p.status),
-  nama: p.nama_pemesan,
-  no_hp: p.no_hp,
-  metode_bayar: p.payment_type?.toUpperCase() || 'QRIS',
-  tipe_pengantaran: p.tipe_pengantaran === 'diantar' ? `${p.diantar_ke}` : 'Ambil Sendiri',
-  diantar_ke: p.diantar_ke,
-  tanggal_bayar: formatTanggal(p.paid_at),
-  catatan: p.catatan,
-  total_harga: Number(p.total_harga),
-  total_estimasi: Number(p.total_estimasi), // ✅ tambahin ini
-  status: p.status,
-  menu: detailMenuRes.rows
-};
+    id: p.id,
+    nomor_antrian: p.nomor_antrian, // ✅ Tambahin ini
+    kios_id: p.kios_id,
+    status_label: getStatusLabel(p.tipe_pengantaran, p.status),
+    nama: p.nama_pemesan,
+    no_hp: p.no_hp,
+    metode_bayar: p.payment_type?.toUpperCase() || 'QRIS',
+    tipe_pengantaran: p.tipe_pengantaran === 'diantar' ? `${p.diantar_ke}` : 'Ambil Sendiri',
+    diantar_ke: p.diantar_ke,
+    tanggal_bayar: formatTanggal(p.paid_at),
+    catatan: p.catatan,
+    total_harga: Number(p.total_harga),
+    total_estimasi: Number(p.total_estimasi),
+    status: p.status,
+    menu: detailMenuRes.rows
+  };
+
   res.status(200).json(data);
  } catch (err) {
   console.error('getDetailPesananMasuk error:', err);
