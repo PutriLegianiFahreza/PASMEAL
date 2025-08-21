@@ -495,14 +495,14 @@ const getDetailRiwayatPesanan = async (req, res) => {
 
     // 1. Ambil pesanan yang sudah selesai (done) milik kios penjual
     const pesananRes = await pool.query(
-      `SSELECT p.id, p.paid_at, p.total_estimasi, p.status, p.tipe_pengantaran, p.nama_pemesan, 
-              p.no_hp, p.payment_type, p.diantar_ke, p.catatan, p.total_harga, p.kios_id
-       FROM pesanan p
-       WHERE p.id = $1 
-         AND p.status = 'done'
-         AND p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $2)`,
-      [id, penjualId]
-    );
+  `SELECT p.id, p.paid_at, p.created_at, p.total_estimasi, p.status, p.tipe_pengantaran, p.nama_pemesan, 
+          p.no_hp, p.payment_type, p.diantar_ke, p.catatan, p.total_harga, p.kios_id
+   FROM pesanan p
+   WHERE p.id = $1 
+     AND p.status = 'done'
+     AND p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $2)`,
+  [id, penjualId]
+);
 
     if (pesananRes.rows.length === 0) {
       return res.status(404).json({ message: "Riwayat pesanan tidak ditemukan atau bukan milik Anda" });
