@@ -29,10 +29,11 @@ const addToKeranjang = async (req, res) => {
     );
 
     if (existingCart.rows.length > 0 && existingCart.rows[0].kios_id !== kios_id) {
-      // Reset keranjang kalau beda kios
-      await pool.query('DELETE FROM keranjang WHERE guest_id = $1', [guest_id]);
+      return res.status(409).json({ // 409 Conflict adalah status yang tepat
+        message: 'Anda memiliki item dari kios lain di keranjang. Kosongkan keranjang untuk melanjutkan.',
+        error_code: 'DIFFERENT_KIOS'
+      });
     }
-
     // Cek apakah menu sudah ada di keranjang
     const existing = await pool.query(
       'SELECT * FROM keranjang WHERE guest_id = $1 AND menu_id = $2',
