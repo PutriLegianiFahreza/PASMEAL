@@ -15,8 +15,11 @@ router.get('/pesanan/riwayat', verifiedMiddleware, pesananController.getRiwayatP
 // Detail riwayat pesanan (penjual)
 router.get('/pesanan/riwayat/:id', verifiedMiddleware, pesananController.getDetailRiwayatPesanan);
 
-// Ambil daftar pesanan masuk (penjual)
-router.get('/pesanan-masuk', pesananOnlyMiddleware, pesananController.getPesananMasuk);
+// Endpoint untuk penjual biasa (login & verified)
+router.get('/pesanan-masuk', verifiedMiddleware, pesananController.getPesananMasuk);
+
+// Endpoint untuk auto-login via WA (akses terbatas)
+router.get('/pesanan-masuk-wa', pesananOnlyMiddleware, pesananController.getPesananMasuk);
 
 // ✅ Hitung jumlah pesanan masuk (penjual) → buat badge
 router.get('/pesanan-masuk/count', verifiedMiddleware, pesananController.countPesananMasuk);

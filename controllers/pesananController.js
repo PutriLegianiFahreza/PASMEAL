@@ -257,10 +257,12 @@ const getDetailPesanan = async (req, res) => {
 // [PENJUAL] Mengambil daftar pesanan masuk
 const getPesananMasuk = async (req, res) => {
   try {
-    const penjualId = Number(req.user.id); // langsung number
-if (isNaN(penjualId)) {
-  return res.status(400).json({ message: "User ID tidak valid" });
-}
+    // Ambil penjualId dari req.user (bisa id atau penjual_id)
+    const penjualId = Number(req.user.id || req.user.penjual_id);
+
+    if (isNaN(penjualId)) {
+      return res.status(400).json({ message: "User ID tidak valid" });
+    }
 
     const page = parseInt(req.query.page) || 1;
     const limit = 8;
@@ -281,11 +283,12 @@ if (isNaN(penjualId)) {
 
     // Hitung total pesanan untuk pagination
     const countRes = await pool.query(
-  `SELECT COUNT(id) AS total FROM pesanan
-   WHERE kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
-     AND LOWER(status) IN ('paid', 'processing', 'ready', 'delivering')`,
-  [penjualId]
-);
+      `SELECT COUNT(id) AS total FROM pesanan
+       WHERE kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
+         AND LOWER(status) IN ('paid', 'processing', 'ready', 'delivering')`,
+      [penjualId]
+    );
+
     const total = parseInt(countRes.rows[0]?.total || 0);
     const totalPages = Math.ceil(total / limit);
 
@@ -305,14 +308,13 @@ if (isNaN(penjualId)) {
       status: getStatusLabel(row.tipe_pengantaran, row.status)
     }));
 
-    console.log('formattedData:', formattedData);
-
     res.json({ page, totalPages, limit, total, data: formattedData });
   } catch (err) {
     console.error("getPesananMasuk error:", err);
     res.status(500).json({ message: "Terjadi kesalahan server" });
   }
 };
+
 
 // [PENJUAL] Mengambil detail pesanan masuk
 const getDetailPesananMasuk = async (req, res) => {
