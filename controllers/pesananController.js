@@ -444,36 +444,47 @@ const updateStatusPesanan = async (req, res) => {
   }
 };
 
-// [PENJUAL] Mengambil riwayat pesanan yang sudah selesai
 const getRiwayatPesanan = async (req, res) => {
- const penjualId = req.user.id;
- const page = parseInt(req.query.page) || 1;
- const limit = 8;
- const offset = (page - 1) * limit;
+  const penjualId = req.user.id;
+  const page = parseInt(req.query.page) || 1;
+  const limit = 8;
+  const offset = (page - 1) * limit;
 
- try {
-  const pesananRes = await pool.query(
-   `SELECT id, kios_id, nama_pemesan, total_harga, total_estimasi, status,
-       TO_CHAR(created_at, 'DD Mon YYYY, HH24:MI') AS tanggal
-   FROM pesanan
-   WHERE status = 'done' AND kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
-   ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-   [penjualId, limit, offset]
-  );
-  const countRes = await pool.query(
-   `SELECT COUNT(id) AS total FROM pesanan
-   WHERE status = 'done' AND kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)`,
-   [penjualId]
-  );
+  try {
+    const pesananRes = await pool.query(
+      `SELECT id, kios_id, nama_pemesan, no_hp, tipe_pengantaran, payment_type,
+              total_harga, total_estimasi, status,
+              TO_CHAR(created_at, 'DD Mon YYYY, HH24:MI') AS tanggal
+       FROM pesanan
+       WHERE status = 'done' 
+         AND kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [penjualId, limit, offset]
+    );
 
-  const total = parseInt(countRes.rows[0].total);
-  const totalPages = Math.ceil(total / limit);
+    const countRes = await pool.query(
+      `SELECT COUNT(id) AS total 
+       FROM pesanan
+       WHERE status = 'done' 
+         AND kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)`,
+      [penjualId]
+    );
 
-  res.json({ page, totalPages, limit, total, data: pesananRes.rows });
- } catch (err) {
-  console.error('getRiwayatPesanan error:', err);
-  res.status(500).json({ message: 'Terjadi kesalahan server' });
- }
+    const total = parseInt(countRes.rows[0].total);
+    const totalPages = Math.ceil(total / limit);
+
+    // Format metode pembayaran agar konsisten
+    const data = pesananRes.rows.map(p => ({
+      ...p,
+      metode_bayar: p.payment_type ? p.payment_type.toUpperCase() : 'QRIS'
+    }));
+
+    res.json({ page, totalPages, limit, total, data });
+  } catch (err) {
+    console.error('getRiwayatPesanan error:', err);
+    res.status(500).json({ message: 'Terjadi kesalahan server' });
+  }
 };
 
 // [PENJUAL] Mengambil detail riwayat pesanan (status = done)
@@ -484,8 +495,8 @@ const getDetailRiwayatPesanan = async (req, res) => {
 
     // 1. Ambil pesanan yang sudah selesai (done) milik kios penjual
     const pesananRes = await pool.query(
-      `SELECT p.id, p.created_at, p.total_estimasi, p.status, p.tipe_pengantaran, p.nama_pemesan, 
-              p.no_hp, p.payment_type, p.diantar_ke, p.catatan, p.total_harga, p.kios_id, p.paid_at
+      `SSELECT p.id, p.paid_at, p.total_estimasi, p.status, p.tipe_pengantaran, p.nama_pemesan, 
+              p.no_hp, p.payment_type, p.diantar_ke, p.catatan, p.total_harga, p.kios_id
        FROM pesanan p
        WHERE p.id = $1 
          AND p.status = 'done'
