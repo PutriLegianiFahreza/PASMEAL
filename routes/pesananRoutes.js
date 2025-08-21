@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pesananController = require('../controllers/pesananController');
-const { verifiedMiddleware } = require('../middlewares/authMiddleware');
+const { verifiedMiddleware, pesananOnlyMiddleware } = require('../middlewares/authMiddleware');
 
 // Buat pesanan dari keranjang (pembeli)
 router.post('/pesanan', pesananController.buatPesanan);
@@ -16,7 +16,7 @@ router.get('/pesanan/riwayat', verifiedMiddleware, pesananController.getRiwayatP
 router.get('/pesanan/riwayat/:id', verifiedMiddleware, pesananController.getDetailRiwayatPesanan);
 
 // Ambil daftar pesanan masuk (penjual)
-router.get('/pesanan-masuk', verifiedMiddleware, pesananController.getPesananMasuk);
+router.get('/pesanan-masuk', pesananOnlyMiddleware, pesananController.getPesananMasuk);
 
 // ✅ Hitung jumlah pesanan masuk (penjual) → buat badge
 router.get('/pesanan-masuk/count', verifiedMiddleware, pesananController.countPesananMasuk);
@@ -29,8 +29,5 @@ router.patch('/pesanan/:id/status', verifiedMiddleware, pesananController.update
 
 // Ambil detail pesanan by id (untuk pembeli)
 router.get('/pesanan/:id', pesananController.getDetailPesanan);
-
-// Verifikasi token sementara penjual
-router.get('/kios/verify-token', pesananController.verifyTokenKios);
 
 module.exports = router;

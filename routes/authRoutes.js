@@ -16,4 +16,7 @@ router.post('/reset-password', authController.resetPassword);
 // Logout
 router.post('/logout', authMiddleware, authController.logout);
 
+// AUTO LOGIN VIA LINK WA
+router.get('/auto-login', authController.autoLoginViaLink);
+
 module.exports = router;

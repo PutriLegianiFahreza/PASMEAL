@@ -285,6 +285,58 @@ const logout = async (req, res) => {
   }
 };
 
+// AUTO LOGIN VIA LINK WA
+const autoLoginViaLink = async (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.status(400).json({ message: 'Token auto-login wajib diisi' });
+  }
+
+  try {
+    // 1. Ambil data token dari DB
+    const tokenRes = await pool.query(
+      `SELECT * FROM auto_login_tokens 
+       WHERE token = $1 
+         AND expired_at > NOW() 
+         AND is_used = FALSE`,
+      [token]
+    );
+
+    if (tokenRes.rows.length === 0) {
+      return res.status(400).json({ message: 'Token tidak valid atau sudah digunakan/kadaluarsa' });
+    }
+
+    const autoToken = tokenRes.rows[0];
+
+    // 2. Tandai token sebagai sudah digunakan
+    await pool.query(
+      `UPDATE auto_login_tokens SET is_used = TRUE WHERE id = $1`,
+      [autoToken.id]
+    );
+
+    // 3. Generate JWT baru
+    const jwtToken = jwt.sign(
+      {
+        penjual_id: autoToken.penjual_id,
+        access: 'pesanan_only',
+        is_verified: true   // <--- penting biar middleware verifiedMiddleware lolos
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '2h' }
+    );
+
+    return res.json({
+      message: 'Login otomatis berhasil',
+      token: jwtToken
+    });
+
+  } catch (err) {
+    console.error('autoLoginViaLink error:', err);
+    return res.status(500).json({ message: 'Terjadi kesalahan server' });
+  }
+};
+
 
 module.exports = {
   register,
@@ -293,5 +345,6 @@ module.exports = {
   login,
   forgotPassword,
   resetPassword,
-  logout
+  logout,
+  autoLoginViaLink
 };

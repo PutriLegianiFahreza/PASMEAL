@@ -75,4 +75,30 @@ const verifiedMiddleware = async (req, res, next) => {
   }
 };
 
-module.exports = { authMiddleware, verifiedMiddleware };
+// Middleware khusus untuk session auto-login (akses pesanan saja)
+// Middleware khusus untuk session auto-login (akses pesanan saja)
+const pesananOnlyMiddleware = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'Token tidak ditemukan' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    if (decoded.access !== 'pesanan_only') {
+      return res.status(403).json({ message: 'Token tidak punya akses ini' });
+    }
+
+    // Pastikan id bertipe number langsung
+    req.user = { id: Number(decoded.penjual_id) };
+    next();
+  } catch (err) {
+    return res.status(403).json({ message: 'Token tidak valid atau kadaluarsa' });
+  }
+};
+
+
+
+module.exports = { authMiddleware, verifiedMiddleware, pesananOnlyMiddleware };
