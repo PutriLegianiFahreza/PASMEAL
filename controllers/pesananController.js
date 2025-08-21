@@ -452,7 +452,7 @@ const getRiwayatPesanan = async (req, res) => {
 
   try {
     const pesananRes = await pool.query(
-      `SELECT id, kios_id, nama_pemesan, no_hp, tipe_pengantaran, payment_type,
+      `SELECT id, kios_id, nama_pemesan, no_hp, tipe_pengantaran, diantar_ke, payment_type,
               total_harga, total_estimasi, status,
               TO_CHAR(created_at, 'DD Mon YYYY, HH24:MI') AS tanggal
        FROM pesanan
@@ -474,10 +474,10 @@ const getRiwayatPesanan = async (req, res) => {
     const total = parseInt(countRes.rows[0].total);
     const totalPages = Math.ceil(total / limit);
 
-    // Format metode pembayaran agar konsisten
     const data = pesananRes.rows.map(p => ({
       ...p,
-      metode_bayar: p.payment_type ? p.payment_type.toUpperCase() : 'QRIS'
+      metode_bayar: p.payment_type ? p.payment_type.toUpperCase() : 'QRIS',
+      tipe_pengantaran: p.tipe_pengantaran === 'diantar' ? p.diantar_ke : 'Ambil Sendiri'
     }));
 
     res.json({ page, totalPages, limit, total, data });
