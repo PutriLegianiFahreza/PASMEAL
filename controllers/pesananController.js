@@ -487,6 +487,62 @@ const getRiwayatPesanan = async (req, res) => {
  }
 };
 
+// [PENJUAL] Mengambil detail riwayat pesanan (status = done)
+const getDetailRiwayatPesanan = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const penjualId = req.user.id;
+
+    // 1. Ambil pesanan yang sudah selesai (done) milik kios penjual
+    const pesananRes = await pool.query(
+      `SELECT p.id, p.created_at, p.total_estimasi, p.status, p.tipe_pengantaran, p.nama_pemesan, 
+              p.no_hp, p.payment_type, p.diantar_ke, p.catatan, p.total_harga, p.kios_id, p.paid_at
+       FROM pesanan p
+       WHERE p.id = $1 
+         AND p.status = 'done'
+         AND p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $2)`,
+      [id, penjualId]
+    );
+
+    if (pesananRes.rows.length === 0) {
+      return res.status(404).json({ message: "Riwayat pesanan tidak ditemukan atau bukan milik Anda" });
+    }
+
+    const pesanan = pesananRes.rows[0];
+
+    // 2. Ambil detail menu dari pesanan tersebut
+    const detailMenuRes = await pool.query(
+      `SELECT pd.nama_menu, pd.jumlah, pd.harga, pd.subtotal 
+       FROM pesanan_detail pd 
+       WHERE pd.pesanan_id = $1`,
+      [id]
+    );
+
+    // 3. Format response
+    const data = {
+      id: pesanan.id,
+      status_label: getStatusLabel(pesanan.tipe_pengantaran, pesanan.status),
+      nama: pesanan.nama_pemesan,
+      no_hp: pesanan.no_hp,
+      metode_bayar: pesanan.payment_type?.toUpperCase() || 'QRIS',
+      tipe_pengantaran: pesanan.tipe_pengantaran === 'diantar' ? `${pesanan.diantar_ke}` : 'Ambil Sendiri',
+      tanggal_bayar: formatTanggal(pesanan.paid_at),
+      tanggal_selesai: formatTanggal(pesanan.created_at),
+      catatan: pesanan.catatan,
+      total_harga: Number(pesanan.total_harga),
+      total_estimasi: Number(pesanan.total_estimasi),
+      status: pesanan.status,
+      menu: detailMenuRes.rows,
+    };
+
+    res.status(200).json(data);
+  } catch (err) {
+    console.error('getDetailRiwayatPesanan error:', err);
+    res.status(500).json({ message: "Gagal mengambil detail riwayat pesanan" });
+  }
+};
+
+
 module.exports = {
  buatPesanan,
  getPesananByGuest,
@@ -499,5 +555,6 @@ module.exports = {
  getDetailPesananMasuk,
  updateStatusPesanan,
  getRiwayatPesanan,
- countPesananMasuk
+ countPesananMasuk,
+ getDetailRiwayatPesanan
 };

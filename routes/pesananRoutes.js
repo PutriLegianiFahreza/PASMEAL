@@ -3,14 +3,17 @@ const router = express.Router();
 const pesananController = require('../controllers/pesananController');
 const { verifiedMiddleware } = require('../middlewares/authMiddleware');
 
-// Buat pesanan dari keranjang(pembeli)
+// Buat pesanan dari keranjang (pembeli)
 router.post('/pesanan', pesananController.buatPesanan);
 
-// Ambil daftar pesanan by guest_id(penjual)
+// Ambil daftar pesanan by guest_id (pembeli)
 router.get('/pesanan', pesananController.getPesananByGuest);
 
-// Riwayat pesanan(penjual)
+// Riwayat pesanan (penjual)
 router.get('/pesanan/riwayat', verifiedMiddleware, pesananController.getRiwayatPesanan);
+
+// Detail riwayat pesanan (penjual)
+router.get('/pesanan/riwayat/:id', verifiedMiddleware, pesananController.getDetailRiwayatPesanan);
 
 // Ambil daftar pesanan masuk (penjual)
 router.get('/pesanan-masuk', verifiedMiddleware, pesananController.getPesananMasuk);
