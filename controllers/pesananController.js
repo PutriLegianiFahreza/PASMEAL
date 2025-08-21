@@ -495,14 +495,14 @@ const getDetailRiwayatPesanan = async (req, res) => {
 
     // 1. Ambil pesanan yang sudah selesai (done) milik kios penjual
     const pesananRes = await pool.query(
-  `SELECT p.id, p.paid_at, p.created_at, p.total_estimasi, p.status, p.tipe_pengantaran, p.nama_pemesan, 
-          p.no_hp, p.payment_type, p.diantar_ke, p.catatan, p.total_harga, p.kios_id
-   FROM pesanan p
-   WHERE p.id = $1 
-     AND p.status = 'done'
-     AND p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $2)`,
-  [id, penjualId]
-);
+      `SELECT p.id, p.paid_at, p.created_at, p.total_estimasi, p.status, p.tipe_pengantaran, p.nama_pemesan, 
+              p.no_hp, p.payment_type, p.diantar_ke, p.catatan, p.total_harga, p.kios_id
+       FROM pesanan p
+       WHERE p.id = $1 
+         AND p.status = 'done'
+         AND p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $2)`,
+      [id, penjualId]
+    );
 
     if (pesananRes.rows.length === 0) {
       return res.status(404).json({ message: "Riwayat pesanan tidak ditemukan atau bukan milik Anda" });
@@ -510,7 +510,20 @@ const getDetailRiwayatPesanan = async (req, res) => {
 
     const pesanan = pesananRes.rows[0];
 
-    // 2. Ambil detail menu dari pesanan tersebut
+    // 2. Cari nomor antrian berdasarkan urutan waktu selesai
+    const antrianRes = await pool.query(
+      `SELECT p.id
+       FROM pesanan p
+       WHERE p.status = 'done'
+         AND p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
+       ORDER BY p.paid_at ASC`, // atau pakai created_at kalau lebih cocok
+      [penjualId]
+    );
+
+    const nomor_antrian =
+      antrianRes.rows.findIndex((row) => row.id === pesanan.id) + 1;
+
+    // 3. Ambil detail menu dari pesanan tersebut
     const detailMenuRes = await pool.query(
       `SELECT pd.nama_menu, pd.jumlah, pd.harga, pd.subtotal 
        FROM pesanan_detail pd 
@@ -518,14 +531,18 @@ const getDetailRiwayatPesanan = async (req, res) => {
       [id]
     );
 
-    // 3. Format response
+    // 4. Format response
     const data = {
       id: pesanan.id,
+      nomor_antrian,
       status_label: getStatusLabel(pesanan.tipe_pengantaran, pesanan.status),
       nama: pesanan.nama_pemesan,
       no_hp: pesanan.no_hp,
-      metode_bayar: pesanan.payment_type?.toUpperCase() || 'QRIS',
-      tipe_pengantaran: pesanan.tipe_pengantaran === 'diantar' ? `${pesanan.diantar_ke}` : 'Ambil Sendiri',
+      metode_bayar: pesanan.payment_type?.toUpperCase() || "QRIS",
+      tipe_pengantaran:
+        pesanan.tipe_pengantaran === "diantar"
+          ? `${pesanan.diantar_ke}`
+          : "Ambil Sendiri",
       tanggal_bayar: formatTanggal(pesanan.paid_at),
       tanggal_selesai: formatTanggal(pesanan.created_at),
       catatan: pesanan.catatan,
@@ -537,8 +554,10 @@ const getDetailRiwayatPesanan = async (req, res) => {
 
     res.status(200).json(data);
   } catch (err) {
-    console.error('getDetailRiwayatPesanan error:', err);
-    res.status(500).json({ message: "Gagal mengambil detail riwayat pesanan" });
+    console.error("getDetailRiwayatPesanan error:", err);
+    res
+      .status(500)
+      .json({ message: "Gagal mengambil detail riwayat pesanan" });
   }
 };
 
