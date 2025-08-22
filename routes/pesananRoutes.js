@@ -30,6 +30,9 @@ router.get('/pesanan-masuk/:id', verifiedMiddleware, pesananController.getDetail
 // Update status pesanan (penjual)
 router.patch('/pesanan/:id/status', verifiedMiddleware, pesananController.updateStatusPesanan);
 
+//update status pesanan pembeli
+router.get('/pesanan/:id/status', pesananController.getStatusPesananGuest);
+
 // Ambil detail pesanan by id (untuk pembeli)
 router.get('/pesanan/:id', pesananController.getDetailPesanan);
 
