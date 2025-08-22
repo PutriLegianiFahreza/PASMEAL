@@ -2,9 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const serverless = require('serverless-http');
-const pool = require('./config/db');
 const path = require('path');
-
 
 // Load env variables
 dotenv.config();
@@ -32,8 +30,6 @@ const pesananRoutes = require('./routes/pesananRoutes');
 const midtransRoutes = require('./routes/midtransRoutes');
 const penjualRoutes = require('./routes/penjualRoutes');
 
-
-
 app.use('/api', authRoutes);
 app.use('/api/kios', kiosRoutes);
 app.use('/api/menu', menuRoutes);
@@ -44,8 +40,7 @@ app.use('/api', pesananRoutes);
 app.use('/api/midtrans', midtransRoutes);
 app.use('/api/penjual', penjualRoutes);
 
-
-//buat akses foto
+// Static files (foto)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Root endpoint
@@ -53,18 +48,26 @@ app.get('/', (req, res) => {
   res.send('PasMeal API Backend is running...');
 });
 
-// WhatsApp service 
-const { connectToWhatsApp } = require('./services/whatsapp');
-connectToWhatsApp()
-  .then(() => console.log('WhatsApp service started'))
-  .catch(err => console.error(' Failed to start WhatsApp service:', err));
-
 // Export untuk Serverless
 module.exports = app;
 module.exports.handler = serverless(app);
 
-// lokal
+// LOCAL: server listen + WhatsApp background
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+
+    // Start WhatsApp service di background (non-blocking)
+    setImmediate(async () => {
+      try {
+        const { connectToWhatsApp } = require('./services/whatsapp');
+        await connectToWhatsApp();
+        console.log('WhatsApp service started');
+      } catch (err) {
+        console.error('Failed to start WhatsApp service:', err);
+      }
+    });
+  });
 }
