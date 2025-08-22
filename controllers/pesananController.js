@@ -130,11 +130,9 @@ const buatPesanan = async (req, res) => {
 
     await client.query('BEGIN');
 
-    // Hitung total harga dan estimasi baru
     const total_harga = items.reduce((sum, item) => sum + Number(item.harga) * Number(item.jumlah), 0);
     const total_estimasi = items.reduce((sum, item) => sum + (Number(item.estimasi_menit) || 0) * Number(item.jumlah), 0);
 
-    // Ambil semua pesanan aktif milik guest
     const pesananAntreanRes = await client.query(
       `SELECT id, total_estimasi 
        FROM pesanan
@@ -144,13 +142,12 @@ const buatPesanan = async (req, res) => {
       [guest_id]
     );
 
-    // Hitung estimasi mulai & selesai berdasarkan antrean
     let waktuSelesaiSebelumnya = new Date().getTime();
     for (const p of pesananAntreanRes.rows) {
       waktuSelesaiSebelumnya += (Number(p.total_estimasi) || 0) * 60 * 1000;
     }
 
-    const total_estimasi_final = total_estimasi; // tetap simpan total_estimasi pesanan baru di DB
+    const total_estimasi_final = total_estimasi; 
     const estimasi_mulai_at = new Date(waktuSelesaiSebelumnya);
     const estimasi_selesai_at = new Date(waktuSelesaiSebelumnya + total_estimasi * 60 * 1000);
 
@@ -186,7 +183,6 @@ const buatPesanan = async (req, res) => {
 
     await notifyPenjual(kios_id, pesanan.id);
 
-    // Kirim response dengan estimasi mulai & selesai
     res.status(201).json({
       message: 'Pesanan berhasil dibuat',
       pesanan: {
