@@ -101,14 +101,10 @@ const buatPesanan = async (req, res) => {
   const { tipe_pengantaran, nama_pemesan, no_hp, catatan = '', diantar_ke } = req.body;
 
   if (!guest_id || !tipe_pengantaran || !nama_pemesan || !no_hp) {
-    return res.status(400).json({ message: 'Data wajib (guest_id, tipe_pengantaran, nama_pemesan, no_hp) tidak lengkap.' });
-  }
-  if (tipe_pengantaran === 'diantar' && (!diantar_ke || diantar_ke.trim() === '')) {
-    return res.status(400).json({ message: 'Alamat pengantaran (diantar_ke) wajib diisi.' });
+    return res.status(400).json({ message: 'Data wajib tidak lengkap.' });
   }
 
   const client = await pool.connect();
-
   try {
     const keranjangRes = await client.query(
       `SELECT k.id AS keranjang_id, k.menu_id, k.jumlah, 
@@ -117,68 +113,61 @@ const buatPesanan = async (req, res) => {
        JOIN menu m ON k.menu_id = m.id 
        WHERE k.guest_id = $1`,
       [guest_id]
-    );
-    if (keranjangRes.rows.length === 0) {
-      return res.status(400).json({ message: 'Keranjang kosong' });
-    }
+);
+    if (!keranjangRes.rows.length) return res.status(400).json({ message: 'Keranjang kosong' });
 
     const items = keranjangRes.rows;
     const kios_id = items[0].kios_id;
-    if (items.some(item => item.kios_id !== kios_id)) {
-      return res.status(400).json({ message: 'Semua item dalam satu pesanan harus dari kios yang sama.' });
-    }
 
     await client.query('BEGIN');
 
-    const total_harga = items.reduce((sum, item) => sum + Number(item.harga) * Number(item.jumlah), 0);
-    const total_estimasi = items.reduce((sum, item) => sum + (Number(item.estimasi_menit) || 0) * Number(item.jumlah), 0);
-
-    const pesananAntreanRes = await client.query(
-  `SELECT id, total_estimasi
-   FROM pesanan
-   WHERE kios_id = $1  -- <-- BENAR, ini antrean untuk 1 kios
-     AND status IN ('paid', 'processing', 'ready', 'delivering')
-   ORDER BY paid_at ASC`, 
-  [kios_id] 
-);
-
-    let waktuSelesaiSebelumnya = new Date().getTime();
-    for (const p of pesananAntreanRes.rows) {
-      waktuSelesaiSebelumnya += (Number(p.total_estimasi) || 0) * 60 * 1000;
-    }
-
-    const total_estimasi_final = total_estimasi; 
-    const estimasi_mulai_at = new Date(waktuSelesaiSebelumnya);
-    const estimasi_selesai_at = new Date(waktuSelesaiSebelumnya + total_estimasi * 60 * 1000);
-
-    const pesananRes = await client.query(
-      `INSERT INTO pesanan 
-        (guest_id, kios_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke, total_harga, total_estimasi, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending') 
-       RETURNING *`,
-      [guest_id, kios_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke || null, total_harga, total_estimasi_final]
+    const total_harga = items.reduce((sum, item) => sum + item.harga * item.jumlah, 0);
+    const total_estimasi = items.reduce((sum, item) => sum + (item.estimasi_menit || 0) * item.jumlah, 0);
+ // Ambil antrean aktif di kios
+    const antreanRes = await client.query(
+      `SELECT id, status, total_estimasi, estimasi_selesai_at
+       FROM pesanan
+       WHERE kios_id = $1
+         AND status IN ('paid','processing','ready','delivering')
+       ORDER BY paid_at ASC`,
+      [kios_id]
     );
+
+    // Hitung estimasi mulai & selesai pesanan baru
+    let waktuMulai = Date.now();
+    if (antreanRes.rows.length) {
+      // Ambil estimasi selesai pesanan terakhir
+      const lastPesanan = antreanRes.rows[antreanRes.rows.length - 1];
+      const lastSelesai = lastPesanan.estimasi_selesai_at 
+                          ? new Date(lastPesanan.estimasi_selesai_at).getTime() 
+                          : waktuMulai + (lastPesanan.total_estimasi || 0) * 60000;
+      waktuMulai = Math.max(waktuMulai, lastSelesai);
+        }
+    const estimasi_mulai_at = new Date(waktuMulai);
+    const estimasi_selesai_at = new Date(waktuMulai + total_estimasi * 60000);
+
+    // Insert pesanan
+    const pesananRes = await client.query(
+      `INSERT INTO pesanan
+       (guest_id, kios_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke,
+        total_harga, total_estimasi, estimasi_mulai_at, estimasi_selesai_at, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending')
+       RETURNING *`,
+      [guest_id, kios_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke || null,
+       total_harga, total_estimasi, estimasi_mulai_at, estimasi_selesai_at]
+ );
     const pesanan = pesananRes.rows[0];
 
-    const insertDetailQuery =
-      `INSERT INTO pesanan_detail 
-        (pesanan_id, menu_id, nama_menu, harga, foto_menu, jumlah, subtotal) 
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`;
-
+    // Insert detail
+    const insertDetailQuery = `INSERT INTO pesanan_detail
+      (pesanan_id, menu_id, nama_menu, harga, foto_menu, jumlah, subtotal)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)`;
     for (const item of items) {
       await client.query(insertDetailQuery, [
-        pesanan.id,
-        item.menu_id,
-        item.nama_menu,
-        item.harga,
-        item.foto_menu,
-        item.jumlah,
-        Number(item.harga) * Number(item.jumlah)
+        pesanan.id, item.menu_id, item.nama_menu, item.harga, item.foto_menu, item.jumlah, item.harga * item.jumlah
       ]);
     }
-
-    await client.query('DELETE FROM keranjang WHERE guest_id = $1', [guest_id]);
-
+await client.query('DELETE FROM keranjang WHERE guest_id = $1', [guest_id]);
     await client.query('COMMIT');
 
     await notifyPenjual(kios_id, pesanan.id);
@@ -191,87 +180,94 @@ const buatPesanan = async (req, res) => {
         estimasi_selesai_at: estimasi_selesai_at.toISOString()
       }
     });
-
-  } catch (err) {
+ } catch (err) {
     await client.query('ROLLBACK');
-    console.error('buatPesanan error:', err);
+    console.error(err);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   } finally {
-    client.release(); 
-  }
+    client.release();
+  }
 };
 
-//buat status pesanan pembeli
+//update status pesanan
 const getStatusPesananGuest = async (req, res) => {
   try {
     const { id } = req.params;
     const guest_id = getGuestId(req);
 
-    // 1. Ambil Kios ID dari pesanan yang diminta
+    // 1. Cek apakah pesanan milik guest & ambil kios_id + status
     const pesananRes = await pool.query(
-      'SELECT kios_id, status FROM pesanan WHERE id = $1 AND guest_id = $2',
+      `SELECT kios_id, status 
+       FROM pesanan 
+       WHERE id = $1 AND guest_id = $2`,
       [id, guest_id]
     );
-  if (pesananRes.rows.length === 0) {
-      return res.status(404).json({ message: 'Pesanan tidak ditemukan' });
+
+    if (pesananRes.rows.length === 0) {
+      return res.status(404).json({ message: "Pesanan tidak ditemukan" });
     }
+
     const { kios_id, status } = pesananRes.rows[0];
 
-    // Jika pesanan sudah selesai, langsung kembalikan statusnya
-if (status === 'done') {
-      return res.json({ status, estimasi_selesai_at: new Date().toISOString() });
+    // Kalau sudah selesai → langsung return
+    if (status === "done") {
+      return res.json({
+        status,
+        estimasi_selesai_at: new Date().toISOString(),
+      });
     }
 
-    // 2. Ambil semua pesanan aktif di kios tersebut untuk membangun antrean
+    // 2. Ambil antrean pesanan aktif di kios
     const antreanRes = await pool.query(
-      `SELECT id, paid_at, total_estimasi, status
+      `SELECT id, paid_at, total_estimasi, status, estimasi_mulai_at
        FROM pesanan
        WHERE kios_id = $1
          AND status IN ('paid', 'processing', 'ready', 'delivering')
        ORDER BY paid_at ASC`,
       [kios_id]
- );
+    );
 
     if (antreanRes.rows.length === 0) {
-      return res.status(404).json({ message: 'Tidak ada antrean aktif' });
+      return res.status(404).json({ message: "Tidak ada antrean aktif" });
     }
 
-    // 3. Hitung ulang jadwal real-time
-    let waktuSelesaiSebelumnya = null;
+    let waktuSelesaiSebelumnya = Date.now();
     let targetPesanan = null;
-antreanRes.rows.forEach((pesanan, index) => {
-      const waktuMulaiMillis =
-        index === 0 ? new Date(pesanan.paid_at).getTime() : waktuSelesaiSebelumnya;
 
-      // Jika pesanan sedang diproses, waktu mulainya adalah SEKARANG, bukan jadwal
-      // Ini adalah kunci agar waktu dinamis jika pesanan sebelumnya selesai lebih cepat
-      const isProcessing = pesanan.status === 'processing';
-      const actualStartTime = isProcessing ? Date.now() : waktuMulaiMillis;
+    antreanRes.rows.forEach((p) => {
+      const mulai =
+        p.status === "processing"
+          ? Date.now()
+          : Math.max(
+              waktuSelesaiSebelumnya,
+              new Date(p.estimasi_mulai_at || p.paid_at).getTime()
+            );
 
-      const durasiMillis = (pesanan.total_estimasi || 0) * 60 * 1000;
-      const waktuSelesaiMillis = actualStartTime + durasiMillis;
-waktuSelesaiSebelumnya = waktuSelesaiMillis;
+      const durasi = Number(p.total_estimasi || 0) * 60000; // menit → ms
+      const selesai = mulai + durasi;
 
-      if (pesanan.id == id) {
+      waktuSelesaiSebelumnya = selesai;
+
+      if (p.id == id) {
         targetPesanan = {
-          ...pesanan,
-          estimasi_selesai_at: new Date(waktuSelesaiMillis).toISOString(),
+          ...p,
+          estimasi_selesai_at: new Date(selesai).toISOString(),
         };
       }
     });
 
     if (!targetPesanan) {
-      // Mungkin pesanan ini belum dibayar atau sudah selesai
+      // Kalau pesanan nggak ketemu di antrean aktif
       return res.json({ status, estimasi_selesai_at: null });
     }
- res.json({
+
+    return res.json({
       status: targetPesanan.status,
       estimasi_selesai_at: targetPesanan.estimasi_selesai_at,
     });
-
   } catch (err) {
-    console.error('getStatusPesananGuest error:', err);
-    res.status(500).json({ message: 'Gagal mengambil status pesanan' });
+    console.error("getStatusPesananGuest error:", err);
+    res.status(500).json({ message: "Gagal mengambil status pesanan" });
   }
 };
 
