@@ -306,22 +306,53 @@ const getDetailPesanan = async (req, res) => {
     return res.status(401).json({ message: 'Akses tidak sah' });
   }
 
- try {
-  const pesananRes = await pool.query(
-      'SELECT * FROM pesanan WHERE id = $1 AND guest_id = $2', 
+  try {
+    const pesananRes = await pool.query(
+      'SELECT * FROM pesanan WHERE id = $1 AND guest_id = $2',
       [id, guest_id]
     );
-  
+
     if (pesananRes.rows.length === 0) {
       return res.status(404).json({ message: 'Pesanan tidak ditemukan atau Anda tidak memiliki akses' });
     }
+const pesanan = pesananRes.rows[0];
 
-  const detailsRes = await pool.query('SELECT * FROM pesanan_detail WHERE pesanan_id = $1', [id]);
-  res.json({ ...pesananRes.rows[0], items: detailsRes.rows });
- } catch (err) {
-  console.error('getDetailPesanan error:', err);
-  res.status(500).json({ message: 'Terjadi kesalahan server' });
- }
+    // Ambil detail item pesanan
+    const detailsRes = await pool.query('SELECT * FROM pesanan_detail WHERE pesanan_id = $1', [id]);
+    pesanan.items = detailsRes.rows;
+
+    // --- LOGIKA BARU: Ambil antrean di depan pesanan ini ---
+    let antrean = [];
+    // Hanya hitung antrean jika pesanan belum selesai
+    if (pesanan.status !== 'done') {
+        const antreanRes = await pool.query(
+            `SELECT id, total_estimasi, estimasi_selesai_at
+             FROM pesanan
+             WHERE kios_id = $1
+               AND status IN ('paid', 'processing', 'ready', 'delivering')
+               AND paid_at < $2 -- Ambil pesanan yang masuk SEBELUM pesanan ini
+             ORDER BY paid_at ASC`,
+            [pesanan.kios_id, pesanan.paid_at]
+        );
+// Hitung sisa waktu REAL-TIME untuk setiap pesanan di antrean
+        antrean = antreanRes.rows.map(p => {
+            const sisaWaktuMillis = new Date(p.estimasi_selesai_at).getTime() - Date.now();
+            // Konversi ke menit, pastikan tidak negatif
+            const sisaWaktuMenit = Math.max(0, sisaWaktuMillis / 60000); 
+            return {
+                id: p.id,
+                sisaWaktu: sisaWaktuMenit
+            };
+        }).filter(p => p.sisaWaktu > 0); // Hanya sertakan antrean yang masih punya sisa waktu
+    }
+    
+    // Kirimkan data pesanan beserta antreannya
+    res.json({ ...pesanan, antrean });
+
+  } catch (err) {
+    console.error('getDetailPesanan error:', err);
+    res.status(500).json({ message: 'Terjadi kesalahan server' });
+  }
 };
 
 // Mengambil daftar pesanan masuk
