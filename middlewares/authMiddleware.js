@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db'); 
 
-// Fungsi cek blacklist token
+// blacklist token
 const isTokenBlacklisted = async (token) => {
   const result = await pool.query(
     'SELECT 1 FROM blacklisted_tokens WHERE token = $1 LIMIT 1',
@@ -10,7 +10,6 @@ const isTokenBlacklisted = async (token) => {
   return result.rowCount > 0;
 };
 
-// Ambil kios_id dari DB berdasarkan penjual_id
 const attachKiosId = async (user) => {
   if (!user.kios_id) {
     const result = await pool.query(
@@ -76,7 +75,6 @@ const verifiedMiddleware = async (req, res, next) => {
 };
 
 // Middleware khusus untuk session auto-login (akses pesanan saja)
-// Middleware khusus untuk session auto-login (akses pesanan saja)
 const pesananOnlyMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -91,7 +89,6 @@ const pesananOnlyMiddleware = (req, res, next) => {
       return res.status(403).json({ message: 'Token tidak punya akses ini' });
     }
 
-    // Pastikan id bertipe number langsung
     req.user = { id: Number(decoded.penjual_id) };
     next();
   } catch (err) {
@@ -101,4 +98,8 @@ const pesananOnlyMiddleware = (req, res, next) => {
 
 
 
-module.exports = { authMiddleware, verifiedMiddleware, pesananOnlyMiddleware };
+module.exports = { 
+  authMiddleware, 
+  verifiedMiddleware, 
+  pesananOnlyMiddleware 
+};

@@ -11,7 +11,6 @@ const addToKeranjang = async (req, res) => {
   }
 
   try {
-    // Ambil harga + kios_id dari menu
     const menuResult = await pool.query(
       'SELECT harga, kios_id FROM menu WHERE id = $1',
       [menu_id]
@@ -22,19 +21,18 @@ const addToKeranjang = async (req, res) => {
 
     const { harga, kios_id } = menuResult.rows[0];
 
-    // Cek apakah keranjang user ada dari kios lain
     const existingCart = await pool.query(
       'SELECT DISTINCT kios_id FROM keranjang WHERE guest_id = $1',
       [guest_id]
     );
 
     if (existingCart.rows.length > 0 && existingCart.rows[0].kios_id !== kios_id) {
-      return res.status(409).json({ // 409 Conflict adalah status yang tepat
+      return res.status(409).json({ 
         message: 'Anda memiliki item dari kios lain di keranjang. Kosongkan keranjang untuk melanjutkan.',
         error_code: 'DIFFERENT_KIOS'
       });
     }
-    // Cek apakah menu sudah ada di keranjang
+
     const existing = await pool.query(
       'SELECT * FROM keranjang WHERE guest_id = $1 AND menu_id = $2',
       [guest_id, menu_id]
@@ -74,7 +72,7 @@ const addToKeranjang = async (req, res) => {
   }
 };
 
-// Ambil semua item keranjang untuk guest_id
+// Ambil data keranjang
 const getKeranjang = async (req, res) => {
   const guest_id = getGuestId(req);
   if (!guest_id) {
@@ -103,7 +101,7 @@ const getKeranjang = async (req, res) => {
   }
 };
 
-// Update jumlah / catatan item
+// Update keranjang
 const updateKeranjangItem = async (req, res) => {
   const guest_id = getGuestId(req);
   const { id } = req.params;

@@ -1,10 +1,6 @@
 const pool = require('../config/db');
 const path = require('path');
 
-// =======================
-// PENJUAL
-// =======================
-
 // Ambil semua menu (penjual)
 const getAllMenu = async (req, res) => {
   const penjualId = req.user.id;
@@ -126,14 +122,12 @@ const getMenusPaginated = async (req, res) => {
   const offset = (page - 1) * limit;
 
   try {
-    // Query total menu milik penjual
     const totalResult = await pool.query(
       'SELECT COUNT(*) FROM menu WHERE penjual_id = $1',
       [penjualId]
     );
     const total = parseInt(totalResult.rows[0].count);
 
-    // Query data dengan pagination
     const result = await pool.query(
       'SELECT * FROM menu WHERE penjual_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
       [penjualId, limit, offset]
@@ -142,17 +136,13 @@ const getMenusPaginated = async (req, res) => {
     res.status(200).json({
       page,
       limit,
-      total,  // total seluruh menu milik penjual
+      total,  
       data: result.rows,
     });
   } catch (err) {
     res.status(500).json({ message: 'Gagal mengambil menu', error: err.message });
   }
 };
-
-// =======================
-// PEMBELI
-// =======================
 
 // Ambil 5 menu terbaru (pembeli)
 const getNewMenus = async (req, res) => {

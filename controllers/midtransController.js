@@ -43,7 +43,6 @@ const createTransaction = async (req, res) => {
             customer_details: { first_name: `Guest-${guest_id}` }
         };
 
-        // Buat transaksi Midtrans
         const transaction = await snap.createTransaction(parameter);
 
         await pool.query(
@@ -107,7 +106,6 @@ const handleNotification = async (req, res) => {
         ]);
         console.log("[INFO] Pesanan updated:", updateResult.rows[0]);
 
-        // Kirim WA kalau status 'paid'
         if (statusUpdate === 'paid') {
             const pesananData = await pool.query(
                 `SELECT m.kios_id, m.nama_menu
@@ -139,4 +137,7 @@ const handleNotification = async (req, res) => {
     }
 };
 
-module.exports = { createTransaction, handleNotification };
+module.exports = { 
+    createTransaction, 
+    handleNotification 
+};

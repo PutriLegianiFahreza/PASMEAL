@@ -42,7 +42,7 @@ const register = async (req, res) => {
     res.status(201).json({ 
       message: 'Penjual berhasil didaftarkan',
       penjual_id: result.rows[0].id,
-      token // kirim token ke client
+      token 
     });
 
   } catch (err) {
@@ -92,7 +92,7 @@ const verifyOtp = async (req, res) => {
 };
 
 
-// resend OTP 
+// RESEND OTP 
 const resendOtp = async (req, res) => {
   const { no_hp } = req.body;
 
@@ -127,7 +127,6 @@ const resendOtp = async (req, res) => {
         return res.status(400).json({ message: 'Silakan tunggu hingga OTP sebelumnya kedaluwarsa' });
       }
     }
-
     // Generate OTP baru
     const kode_otp = Math.floor(100000 + Math.random() * 900000).toString();
     const newExpiredAt = new Date(Date.now() + 3 * 60 * 1000); // 3 menit
@@ -137,7 +136,6 @@ const resendOtp = async (req, res) => {
       VALUES ($1, $2, $3)
     `, [penjual.id, kode_otp, newExpiredAt]);
 
-    // Kirim OTP via WhatsApp
     await sendWhatsAppOTP(no_hp, kode_otp);
 
     res.status(200).json({ message: 'OTP baru telah dikirim' });
@@ -218,7 +216,6 @@ const forgotPassword = async (req, res) => {
     // link reset password
     const resetLink = `https://pas-meal.vercel.app/NewPassPage?token=${token}`;
 
-    // Kirim via WhatsApp
     const message = `🔐 Permintaan reset password diterima.\n\nKlik link berikut untuk mengganti password kamu:\n${resetLink}\n\nLink ini berlaku selama 15 menit.`;
     await sendWhatsApp(no_hp, message);
 
@@ -294,7 +291,6 @@ const autoLoginViaLink = async (req, res) => {
   }
 
   try {
-    // 1. Ambil data token dari DB
     const tokenRes = await pool.query(
       `SELECT * FROM auto_login_tokens 
        WHERE token = $1 
@@ -309,18 +305,16 @@ const autoLoginViaLink = async (req, res) => {
 
     const autoToken = tokenRes.rows[0];
 
-    // 2. Tandai token sebagai sudah digunakan
     await pool.query(
       `UPDATE auto_login_tokens SET is_used = TRUE WHERE id = $1`,
       [autoToken.id]
     );
 
-    // 3. Generate JWT baru
     const jwtToken = jwt.sign(
       {
         penjual_id: autoToken.penjual_id,
         access: 'pesanan_only',
-        is_verified: true   // <--- penting biar middleware verifiedMiddleware lolos
+        is_verified: true  
       },
       process.env.JWT_SECRET,
       { expiresIn: '2h' }

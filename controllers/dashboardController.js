@@ -77,6 +77,9 @@ const getDashboardData = async (req, res) => {
   }
 };
 
-module.exports = { getDashboardData };
+module.exports = { 
+  getDashboardData,
+  getStatusLabel 
+};
 
-module.exports = { getDashboardData };
+

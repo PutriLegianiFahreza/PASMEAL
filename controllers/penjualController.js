@@ -63,4 +63,7 @@ const updateProfil = async (req, res) => {
   }
 };
 
-module.exports = { getProfile, updateProfil };
+module.exports = { 
+  getProfile, 
+  updateProfil 
+};

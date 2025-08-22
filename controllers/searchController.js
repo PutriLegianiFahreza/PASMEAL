@@ -7,13 +7,11 @@ const searchAll = async (req, res) => {
   }
 
   try {
-    // Cari kios berdasarkan nama
     const kiosResult = await pool.query(
       'SELECT * FROM kios WHERE nama_kios ILIKE $1 ORDER BY id DESC',
       [`%${query}%`]
     );
 
-    // Cari menu berdasarkan nama + include kios_id biar bisa di-group
     const menuResult = await pool.query(
       `SELECT m.*, k.id AS kios_id, k.nama_kios 
        FROM menu m
@@ -34,4 +32,6 @@ const searchAll = async (req, res) => {
   }
 };
 
-module.exports = { searchAll };
+module.exports = {
+  searchAll
+};

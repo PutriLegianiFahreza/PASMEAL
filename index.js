@@ -56,7 +56,7 @@ app.get('/', (req, res) => {
 // WhatsApp service 
 const { connectToWhatsApp } = require('./services/whatsapp');
 connectToWhatsApp()
-  .then(() => console.log(' WhatsApp service started'))
+  .then(() => console.log('WhatsApp service started'))
   .catch(err => console.error(' Failed to start WhatsApp service:', err));
 
 // Export untuk Serverless
@@ -66,5 +66,5 @@ module.exports.handler = serverless(app);
 // lokal
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => console.log(` Server running on port ${PORT}`));
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 }
