@@ -89,7 +89,15 @@ const getKeranjang = async (req, res) => {
       ORDER BY k.id DESC
     `, [guest_id]);
 
-    const items = result.rows;
+    const BASE_URL = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
+
+    const items = result.rows.map(row => ({
+      ...row,
+      foto_menu: row.foto_menu 
+        ? `${BASE_URL}/uploads/${row.foto_menu}` 
+        : null
+    }));
+
     const total_harga = items.reduce((s, it) => s + Number(it.subtotal || 0), 0);
     const kios_id = items.length > 0 ? items[0].kios_id : null;
 

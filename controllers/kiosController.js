@@ -141,8 +141,9 @@ const updateKios = async (req, res) => {
 
         const oldKios = rows[0];
 
+        // Simpan nama file saja di DB
         const gambar_kios = req.file 
-            ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}` 
+            ? req.file.filename 
             : oldKios.gambar_kios;
 
         const result = await pool.query(
@@ -164,9 +165,18 @@ const updateKios = async (req, res) => {
             ]
         );
 
+        // Tambahkan URL full saat return response
+        const BASE_URL = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
+        const kiosData = {
+            ...result.rows[0],
+            gambar_kios: result.rows[0].gambar_kios 
+                ? `${BASE_URL}/uploads/${result.rows[0].gambar_kios}`
+                : null
+        };
+
         res.json({
             message: 'Data kios berhasil diperbarui',
-            data: result.rows[0]
+            data: kiosData
         });
     } catch (err) {
         console.error(err);

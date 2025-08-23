@@ -9,11 +9,21 @@ const getAllMenu = async (req, res) => {
       'SELECT * FROM menu WHERE penjual_id = $1 ORDER BY created_at DESC',
       [penjualId]
     );
-    res.status(200).json(result.rows);
+
+    const BASE_URL = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
+    const menus = result.rows.map(menu => ({
+      ...menu,
+      foto_menu: menu.foto_menu 
+        ? `${BASE_URL}/uploads/${menu.foto_menu}`
+        : null
+    }));
+
+    res.status(200).json(menus);
   } catch (error) {
     res.status(500).json({ message: 'Gagal mengambil menu', error: error.message });
   }
 };
+
 
 // Tambah menu (penjual)
 const addMenu = async (req, res) => {
@@ -133,11 +143,19 @@ const getMenusPaginated = async (req, res) => {
       [penjualId, limit, offset]
     );
 
+    const BASE_URL = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
+    const menus = result.rows.map(menu => ({
+      ...menu,
+      foto_menu: menu.foto_menu
+        ? `${BASE_URL}/uploads/${menu.foto_menu}`
+        : null
+    }));
+
     res.status(200).json({
       page,
       limit,
       total,  
-      data: result.rows,
+      data: menus,
     });
   } catch (err) {
     res.status(500).json({ message: 'Gagal mengambil menu', error: err.message });
@@ -196,13 +214,24 @@ const getMenuByIdForBuyer = async (req, res) => {
       [menuId]
     );
 
-    if (result.rowCount === 0) return res.status(404).json({ message: 'Menu tidak ditemukan' });
-    res.status(200).json(result.rows[0]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Menu tidak ditemukan' });
+    }
+
+    const menu = result.rows[0];
+
+    // ✅ Format foto_menu jadi URL lengkap (pakai BASE_URL kalau ada)
+    const BASE_URL = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
+    res.status(200).json({
+      ...menu,
+      foto_menu: menu.foto_menu
+        ? `${BASE_URL}/uploads/${menu.foto_menu}`
+        : null
+    });
   } catch (error) {
     res.status(500).json({ message: 'Gagal mengambil detail menu', error: error.message });
   }
 };
-
 
 module.exports = {
   getAllMenu,
