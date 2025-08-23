@@ -2,7 +2,7 @@ const pool = require('../config/db');
 const crypto = require('crypto');
 const getGuestId = require('../utils/getGuestId');
 const { sendWhatsApp: sendWaMessage } = require('../utils/wa');
-const { formatMenu } = require('../utils/formatter');
+const { formatPesananItem } = require('../utils/formatter');
 
 function formatTanggal(date) {
  if (!date) return null;
@@ -354,13 +354,8 @@ const getDetailPesanan = async (req, res) => {
       [id]
     );
 
-    const BASE_URL = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
-    pesanan.items = detailsRes.rows.map(item => ({
-      ...item,
-      foto_menu: item.foto_menu
-        ? `${BASE_URL}/uploads/${item.foto_menu}`
-        : null
-    }));
+    // Gunakan formatter utils
+    pesanan.items = detailsRes.rows.map(item => formatPesananItem(item, req));
 
     // --- LOGIKA BARU: Ambil antrean di depan pesanan ini ---
     let antrean = [];
@@ -492,7 +487,7 @@ const getDetailPesananMasuk = async (req, res) => {
       return res.status(404).json({ message: "Pesanan tidak ditemukan dalam antrean aktif" });
     }
 
-    // ✅ Tambahin foto_menu di detail
+    // ✅ Ambil detail menu dan gunakan formatter
     const detailMenuRes = await pool.query(
       `SELECT pd.nama_menu, pd.jumlah, pd.harga, pd.foto_menu 
        FROM pesanan_detail pd 
@@ -500,13 +495,7 @@ const getDetailPesananMasuk = async (req, res) => {
       [req.params.id]
     );
 
-    const BASE_URL = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
-    const menu = detailMenuRes.rows.map(item => ({
-      ...item,
-      foto_menu: item.foto_menu
-        ? `${BASE_URL}/uploads/${item.foto_menu}`
-        : null
-    }));
+    const menu = detailMenuRes.rows.map(item => formatPesananItem(item, req));
 
     const data = {
       id: p.id,
@@ -522,7 +511,7 @@ const getDetailPesananMasuk = async (req, res) => {
       total_harga: Number(p.total_harga),
       total_estimasi: Number(p.total_estimasi),
       status: p.status,
-      menu, // ✅ sudah dengan foto_menu lengkap
+      menu, // sudah pakai formatter
       estimasi_mulai_at: p.estimasi_mulai_at,
       estimasi_selesai_at: p.estimasi_selesai_at,
     };
@@ -634,6 +623,7 @@ const getDetailRiwayatPesanan = async (req, res) => {
     const { id } = req.params;
     const penjualId = req.user.id;
 
+    // Ambil pesanan
     const pesananRes = await pool.query(
       `SELECT p.id, p.paid_at, p.created_at, p.total_estimasi, p.status, p.tipe_pengantaran, p.nama_pemesan, 
               p.no_hp, p.payment_type, p.diantar_ke, p.catatan, p.total_harga, p.kios_id
@@ -650,6 +640,7 @@ const getDetailRiwayatPesanan = async (req, res) => {
 
     const pesanan = pesananRes.rows[0];
 
+    // Cari nomor antrian pesanan
     const antrianRes = await pool.query(
       `SELECT p.id
        FROM pesanan p
@@ -659,15 +650,17 @@ const getDetailRiwayatPesanan = async (req, res) => {
       [penjualId]
     );
 
-    const nomor_antrian =
-      antrianRes.rows.findIndex((row) => row.id === pesanan.id) + 1;
+    const nomor_antrian = antrianRes.rows.findIndex((row) => row.id === pesanan.id) + 1;
 
+    // Ambil detail menu & pakai formatter
     const detailMenuRes = await pool.query(
-      `SELECT pd.nama_menu, pd.jumlah, pd.harga, pd.subtotal 
+      `SELECT pd.nama_menu, pd.jumlah, pd.harga, pd.subtotal, pd.foto_menu 
        FROM pesanan_detail pd 
        WHERE pd.pesanan_id = $1`,
       [id]
     );
+
+    const menu = detailMenuRes.rows.map(item => formatPesananItem(item, req));
 
     const data = {
       id: pesanan.id,
@@ -686,15 +679,13 @@ const getDetailRiwayatPesanan = async (req, res) => {
       total_harga: Number(pesanan.total_harga),
       total_estimasi: Number(pesanan.total_estimasi),
       status: pesanan.status,
-      menu: detailMenuRes.rows,
+      menu, // sudah pakai formatter
     };
 
     res.status(200).json(data);
   } catch (err) {
     console.error("getDetailRiwayatPesanan error:", err);
-    res
-      .status(500)
-      .json({ message: "Gagal mengambil detail riwayat pesanan" });
+    res.status(500).json({ message: "Gagal mengambil detail riwayat pesanan" });
   }
 };
 
