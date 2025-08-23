@@ -173,7 +173,7 @@ const removeFromKeranjang = async (req, res) => {
     return res.status(400).json({ message: 'guest_id wajib dikirim' });
 
   try {
-    // Ambil data dulu sebelum dihapus
+    // Ambil data dulu sebelum hapus
     const check = await pool.query(
       `SELECT k.*, m.nama_menu, m.harga, m.foto_menu
        FROM keranjang k
@@ -198,6 +198,7 @@ const removeFromKeranjang = async (req, res) => {
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
+
 
 
 module.exports = {
