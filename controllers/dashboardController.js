@@ -22,15 +22,16 @@ function getStatusLabel(tipe_pengantaran, statusDb) {
 const getDashboardData = async (req, res) => {
   try {
     const { kios_id, id: penjual_id } = req.user;
-    const filters = [];
-    let whereClause = '';
+
+    let filterClause = '';
+    let filterValue = [];
 
     if (kios_id) {
-      filters.push(kios_id);
-      whereClause = 'WHERE m.kios_id = $1';
+      filterClause = 'm.kios_id = $1';
+      filterValue = [kios_id];
     } else if (penjual_id) {
-      filters.push(penjual_id);
-      whereClause = 'WHERE m.penjual_id = $1';
+      filterClause = 'm.penjual_id = $1';
+      filterValue = [penjual_id];
     }
 
     const [
@@ -42,26 +43,31 @@ const getDashboardData = async (req, res) => {
       pool.query(
         `SELECT COUNT(DISTINCT p.id) AS total_pesanan
          FROM pesanan p
-         LEFT JOIN pesanan_detail pd ON pd.pesanan_id = p.id
-         LEFT JOIN menu m ON pd.menu_id = m.id
-         ${whereClause ? whereClause + ' AND' : 'WHERE'} LOWER(p.status) != 'done'`,
-        filters
+         JOIN pesanan_detail pd ON pd.pesanan_id = p.id
+         JOIN menu m ON pd.menu_id = m.id
+         WHERE ${filterClause}
+         AND LOWER(p.status) != 'done'`,
+        filterValue
       ),
       // Total menu
       pool.query(
         `SELECT COUNT(*) AS total_menu
          FROM menu m
-         ${whereClause}`,
-        filters
+         WHERE ${filterClause}`,
+        filterValue
       ),
       // Total pendapatan (hanya pesanan selesai)
       pool.query(
         `SELECT COALESCE(SUM(p.total_harga),0) AS pendapatan
          FROM pesanan p
-         LEFT JOIN pesanan_detail pd ON pd.pesanan_id = p.id
-         LEFT JOIN menu m ON pd.menu_id = m.id
-         ${whereClause ? whereClause + ' AND' : 'WHERE'} LOWER(p.status) = 'done'`,
-        filters
+         WHERE LOWER(p.status) = 'done'
+         AND EXISTS (
+           SELECT 1 FROM pesanan_detail pd
+           JOIN menu m ON pd.menu_id = m.id
+           WHERE pd.pesanan_id = p.id
+           AND ${filterClause}
+         )`,
+        filterValue
       )
     ]);
 
@@ -81,5 +87,3 @@ module.exports = {
   getDashboardData,
   getStatusLabel 
 };
-
-
