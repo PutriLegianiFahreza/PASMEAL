@@ -173,19 +173,24 @@ const removeFromKeranjang = async (req, res) => {
     return res.status(400).json({ message: 'guest_id wajib dikirim' });
 
   try {
-    const del = await pool.query(
-      `DELETE FROM keranjang WHERE id = $1 AND guest_id = $2 
-       RETURNING k.*, m.nama_menu, m.harga, m.foto_menu
+    // Ambil data dulu sebelum dihapus
+    const check = await pool.query(
+      `SELECT k.*, m.nama_menu, m.harga, m.foto_menu
        FROM keranjang k
-       JOIN menu m ON k.menu_id = m.id`,
+       JOIN menu m ON k.menu_id = m.id
+       WHERE k.id = $1 AND k.guest_id = $2`,
       [id, guest_id]
     );
 
-    if (del.rowCount === 0) 
+    if (check.rows.length === 0) {
       return res.status(404).json({ message: 'Item tidak ditemukan' });
+    }
 
-    // Format response agar konsisten
-    const item = formatKeranjang(del.rows[0], req);
+    // Hapus item
+    await pool.query(`DELETE FROM keranjang WHERE id = $1 AND guest_id = $2`, [id, guest_id]);
+
+    // Format response konsisten
+    const item = formatKeranjang(check.rows[0], req);
 
     res.json({ message: 'Item dihapus', item });
   } catch (err) {
@@ -193,6 +198,7 @@ const removeFromKeranjang = async (req, res) => {
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
+
 
 module.exports = {
   addToKeranjang,
