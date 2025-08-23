@@ -2,7 +2,9 @@ const pool = require('../config/db');
 const path = require('path');
 
 const formatMenu = (menu, req) => {
-  const BASE_URL = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
+  let BASE_URL = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
+  BASE_URL = BASE_URL.replace(/\/$/, ""); // hapus trailing slash kalau ada
+
   return {
     ...menu,
     foto_menu: menu.foto_menu 
