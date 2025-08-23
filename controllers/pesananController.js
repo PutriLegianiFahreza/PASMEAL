@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const crypto = require('crypto');
 const getGuestId = require('../utils/getGuestId');
 const { sendWhatsApp: sendWaMessage } = require('../utils/wa');
+const { formatMenu } = require('../utils/formatter');
 
 function formatTanggal(date) {
  if (!date) return null;

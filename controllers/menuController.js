@@ -1,17 +1,6 @@
 const pool = require('../config/db');
 const path = require('path');
-
-const formatMenu = (menu, req) => {
-  let BASE_URL = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
-  BASE_URL = BASE_URL.replace(/\/$/, ""); // hapus trailing slash kalau ada
-
-  return {
-    ...menu,
-    foto_menu: menu.foto_menu 
-      ? `${BASE_URL}/uploads/${menu.foto_menu}`
-      : null
-  };
-};
+const { formatMenu } = require('../utils/formatter');
 
 // Ambil semua menu (penjual)
 const getAllMenu = async (req, res) => {

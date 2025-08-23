@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const getGuestId = require('../utils/getGuestId');
+const { formatKeranjang } = require('../utils/formatter');
 
 // TAMBAH KERANJANG
 const addToKeranjang = async (req, res) => {
@@ -12,14 +13,14 @@ const addToKeranjang = async (req, res) => {
 
   try {
     const menuResult = await pool.query(
-      'SELECT harga, kios_id FROM menu WHERE id = $1',
+      'SELECT harga, kios_id, foto_menu, nama_menu FROM menu WHERE id = $1',
       [menu_id]
     );
     if (menuResult.rowCount === 0) {
       return res.status(404).json({ message: 'Menu tidak ditemukan' });
     }
 
-    const { harga, kios_id } = menuResult.rows[0];
+    const { harga, kios_id, foto_menu, nama_menu } = menuResult.rows[0];
 
     const existingCart = await pool.query(
       'SELECT DISTINCT kios_id FROM keranjang WHERE guest_id = $1',
@@ -27,7 +28,7 @@ const addToKeranjang = async (req, res) => {
     );
 
     if (existingCart.rows.length > 0 && existingCart.rows[0].kios_id !== kios_id) {
-      return res.status(409).json({ 
+      return res.status(409).json({
         message: 'Anda memiliki item dari kios lain di keranjang. Kosongkan keranjang untuk melanjutkan.',
         error_code: 'DIFFERENT_KIOS'
       });
@@ -62,9 +63,18 @@ const addToKeranjang = async (req, res) => {
       item = inserted.rows[0];
     }
 
+    // gabungkan data menu untuk response agar bisa diformat
+    const responseItem = {
+      ...item,
+      nama_menu,
+      harga,
+      foto_menu,
+      subtotal: harga * item.jumlah,
+    };
+
     res.status(existing.rows.length > 0 ? 200 : 201).json({
       message: existing.rows.length > 0 ? 'Jumlah diperbarui' : 'Ditambahkan ke keranjang',
-      item
+      item: formatKeranjang(responseItem, req)
     });
   } catch (err) {
     console.error('addToKeranjang error:', err);
@@ -81,22 +91,15 @@ const getKeranjang = async (req, res) => {
 
   try {
     const result = await pool.query(`
-      SELECT k.id, k.menu_id, k.kios_id, m.nama_menu, m.harga, m.foto_menu, k.jumlah, k.catatan,
-             (m.harga * k.jumlah) AS subtotal
+      SELECT k.id, k.menu_id, k.kios_id, m.nama_menu, m.harga, m.foto_menu, 
+             k.jumlah, k.catatan, (m.harga * k.jumlah) AS subtotal
       FROM keranjang k
       JOIN menu m ON k.menu_id = m.id
       WHERE k.guest_id = $1
       ORDER BY k.id DESC
     `, [guest_id]);
 
-    const BASE_URL = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
-
-    const items = result.rows.map(row => ({
-      ...row,
-      foto_menu: row.foto_menu 
-        ? `${BASE_URL}/uploads/${row.foto_menu}` 
-        : null
-    }));
+    const items = result.rows.map(row => formatKeranjang(row, req));
 
     const total_harga = items.reduce((s, it) => s + Number(it.subtotal || 0), 0);
     const kios_id = items.length > 0 ? items[0].kios_id : null;
@@ -125,8 +128,14 @@ const updateKeranjangItem = async (req, res) => {
 
     const newJumlah = jumlah ?? check.rows[0].jumlah;
 
-    const hargaResult = await pool.query('SELECT harga FROM menu WHERE id = $1', [check.rows[0].menu_id]);
-    const harga = hargaResult.rows[0]?.harga || 0;
+    // kalau jumlah <= 0, hapus item
+    if (newJumlah <= 0) {
+      await pool.query('DELETE FROM keranjang WHERE id = $1 AND guest_id = $2', [id, guest_id]);
+      return res.json({ message: 'Item dihapus karena jumlah = 0' });
+    }
+
+    const hargaResult = await pool.query('SELECT nama_menu, harga, foto_menu FROM menu WHERE id = $1', [check.rows[0].menu_id]);
+    const { harga, nama_menu, foto_menu } = hargaResult.rows[0];
     const total_harga = harga * newJumlah;
 
     const updated = await pool.query(
@@ -137,9 +146,17 @@ const updateKeranjangItem = async (req, res) => {
       [newJumlah, catatan, total_harga, id, guest_id]
     );
 
+    const responseItem = {
+      ...updated.rows[0],
+      nama_menu,
+      harga,
+      foto_menu,
+      subtotal: total_harga,
+    };
+
     res.json({
       message: 'Item diperbarui',
-      item: updated.rows[0]
+      item: formatKeranjang(responseItem, req)
     });
   } catch (err) {
     console.error('updateKeranjangItem error:', err);
@@ -152,12 +169,25 @@ const removeFromKeranjang = async (req, res) => {
   const guest_id = getGuestId(req);
   const { id } = req.params;
 
-  if (!guest_id) return res.status(400).json({ message: 'guest_id wajib dikirim' });
+  if (!guest_id) 
+    return res.status(400).json({ message: 'guest_id wajib dikirim' });
 
   try {
-    const del = await pool.query('DELETE FROM keranjang WHERE id = $1 AND guest_id = $2 RETURNING *', [id, guest_id]);
-    if (del.rowCount === 0) return res.status(404).json({ message: 'Item tidak ditemukan' });
-    res.json({ message: 'Item dihapus', item: del.rows[0] });
+    const del = await pool.query(
+      `DELETE FROM keranjang WHERE id = $1 AND guest_id = $2 
+       RETURNING k.*, m.nama_menu, m.harga, m.foto_menu
+       FROM keranjang k
+       JOIN menu m ON k.menu_id = m.id`,
+      [id, guest_id]
+    );
+
+    if (del.rowCount === 0) 
+      return res.status(404).json({ message: 'Item tidak ditemukan' });
+
+    // Format response agar konsisten
+    const item = formatKeranjang(del.rows[0], req);
+
+    res.json({ message: 'Item dihapus', item });
   } catch (err) {
     console.error('removeFromKeranjang error:', err);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
