@@ -1,6 +1,16 @@
 const pool = require('../config/db');
 const path = require('path');
 
+const formatMenu = (menu, req) => {
+  const BASE_URL = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
+  return {
+    ...menu,
+    foto_menu: menu.foto_menu 
+      ? `${BASE_URL}/uploads/${menu.foto_menu}`
+      : null
+  };
+};
+
 // Ambil semua menu (penjual)
 const getAllMenu = async (req, res) => {
   const penjualId = req.user.id;
@@ -10,20 +20,13 @@ const getAllMenu = async (req, res) => {
       [penjualId]
     );
 
-    const BASE_URL = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
-    const menus = result.rows.map(menu => ({
-      ...menu,
-      foto_menu: menu.foto_menu 
-        ? `${BASE_URL}/uploads/${menu.foto_menu}`
-        : null
-    }));
+    const menus = result.rows.map(menu => formatMenu(menu, req));
 
     res.status(200).json(menus);
   } catch (error) {
     res.status(500).json({ message: 'Gagal mengambil menu', error: error.message });
   }
 };
-
 
 // Tambah menu (penjual)
 const addMenu = async (req, res) => {
@@ -48,7 +51,11 @@ const addMenu = async (req, res) => {
         status_tersedia !== undefined ? status_tersedia : true
       ]
     );
-    res.status(201).json({ message: 'Menu berhasil ditambahkan', data: result.rows[0] });
+
+    // 🔥 format ulang biar foto_menu jadi URL lengkap
+    const menu = formatMenu(result.rows[0], req);
+
+    res.status(201).json({ message: 'Menu berhasil ditambahkan', data: menu });
   } catch (error) {
     res.status(500).json({ message: 'Terjadi kesalahan server', error: error.message });
   }
@@ -88,7 +95,11 @@ const updateMenu = async (req, res) => {
   try {
     const result = await pool.query(query, values);
     if (result.rowCount === 0) return res.status(404).json({ message: 'Menu tidak ditemukan atau bukan milik kamu' });
-    res.status(200).json({ message: 'Menu berhasil diupdate', data: result.rows[0] });
+
+    // 🔥 format ulang biar foto_menu jadi URL lengkap
+    const menu = formatMenu(result.rows[0], req);
+
+    res.status(200).json({ message: 'Menu berhasil diupdate', data: menu });
   } catch (error) {
     res.status(500).json({ message: 'Terjadi kesalahan server', error: error.message });
   }
@@ -101,9 +112,15 @@ const getMenuById = async (req, res) => {
   if (isNaN(menuId)) return res.status(400).json({ message: 'ID menu tidak valid' });
 
   try {
-    const result = await pool.query('SELECT * FROM menu WHERE id = $1 AND penjual_id = $2', [menuId, penjualId]);
+    const result = await pool.query(
+      'SELECT * FROM menu WHERE id = $1 AND penjual_id = $2',
+      [menuId, penjualId]
+    );
     if (result.rowCount === 0) return res.status(404).json({ message: 'Menu tidak ditemukan' });
-    res.status(200).json(result.rows[0]);
+
+    const menu = formatMenu(result.rows[0], req);
+
+    res.status(200).json(menu);
   } catch (error) {
     res.status(500).json({ message: 'Gagal mengambil detail menu', error: error.message });
   }
@@ -143,13 +160,7 @@ const getMenusPaginated = async (req, res) => {
       [penjualId, limit, offset]
     );
 
-    const BASE_URL = process.env.BASE_URL || `${req.protocol}://${req.get("host")}`;
-    const menus = result.rows.map(menu => ({
-      ...menu,
-      foto_menu: menu.foto_menu
-        ? `${BASE_URL}/uploads/${menu.foto_menu}`
-        : null
-    }));
+    const menus = result.rows.map(menu => formatMenu(menu, req));
 
     res.status(200).json({
       page,
@@ -165,8 +176,13 @@ const getMenusPaginated = async (req, res) => {
 // Ambil 5 menu terbaru (pembeli)
 const getNewMenus = async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM menu WHERE status_tersedia = true ORDER BY created_at DESC LIMIT 5');
-    res.json(result.rows);
+    const result = await pool.query(
+      'SELECT * FROM menu WHERE status_tersedia = true ORDER BY created_at DESC LIMIT 5'
+    );
+
+    const menus = result.rows.map(menu => formatMenu(menu, req));
+
+    res.json(menus);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -178,8 +194,14 @@ const searchMenus = async (req, res) => {
   if (!query) return res.status(400).json({ message: 'Query pencarian wajib diisi' });
 
   try {
-    const result = await pool.query('SELECT * FROM menu WHERE nama_menu ILIKE $1 AND status_tersedia = true', [`%${query}%`]);
-    res.json(result.rows);
+    const result = await pool.query(
+      'SELECT * FROM menu WHERE nama_menu ILIKE $1 AND status_tersedia = true',
+      [`%${query}%`]
+    );
+
+    const menus = result.rows.map(menu => formatMenu(menu, req));
+
+    res.json(menus);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -197,7 +219,10 @@ const searchMenusByKios = async (req, res) => {
       'SELECT * FROM menu WHERE kios_id = $1 AND nama_menu ILIKE $2 AND status_tersedia = true',
       [kiosId, `%${query}%`]
     );
-    res.json(result.rows);
+
+    const menus = result.rows.map(menu => formatMenu(menu, req));
+
+    res.json(menus);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
