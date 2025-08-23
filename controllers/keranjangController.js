@@ -1,3 +1,5 @@
+// controllers/keranjangController.js
+
 const pool = require('../config/db');
 const getGuestId = require('../utils/getGuestId');
 const { formatKeranjang } = require('../utils/formatter');
@@ -16,9 +18,7 @@ const addToKeranjang = async (req, res) => {
       'SELECT harga, kios_id, foto_menu, nama_menu FROM menu WHERE id = $1',
       [menu_id]
     );
-    if (menuResult.rowCount === 0) {
-      return res.status(404).json({ message: 'Menu tidak ditemukan' });
-    }
+    if (menuResult.rowCount === 0) return res.status(404).json({ message: 'Menu tidak ditemukan' });
 
     const { harga, kios_id, foto_menu, nama_menu } = menuResult.rows[0];
 
@@ -63,7 +63,6 @@ const addToKeranjang = async (req, res) => {
       item = inserted.rows[0];
     }
 
-    // gabungkan data menu untuk response agar bisa diformat
     const responseItem = {
       ...item,
       nama_menu,
@@ -74,7 +73,7 @@ const addToKeranjang = async (req, res) => {
 
     res.status(existing.rows.length > 0 ? 200 : 201).json({
       message: existing.rows.length > 0 ? 'Jumlah diperbarui' : 'Ditambahkan ke keranjang',
-      item: formatKeranjang(responseItem, req)
+      item: formatKeranjang(responseItem)
     });
   } catch (err) {
     console.error('addToKeranjang error:', err);
@@ -82,12 +81,10 @@ const addToKeranjang = async (req, res) => {
   }
 };
 
-// Ambil data keranjang
+// AMBIL KERANJANG
 const getKeranjang = async (req, res) => {
   const guest_id = getGuestId(req);
-  if (!guest_id) {
-    return res.status(400).json({ message: 'guest_id wajib dikirim (query/header/body)' });
-  }
+  if (!guest_id) return res.status(400).json({ message: 'guest_id wajib dikirim (query/header/body)' });
 
   try {
     const result = await pool.query(`
@@ -99,8 +96,7 @@ const getKeranjang = async (req, res) => {
       ORDER BY k.id DESC
     `, [guest_id]);
 
-    const items = result.rows.map(row => formatKeranjang(row, req));
-
+    const items = result.rows.map(row => formatKeranjang(row));
     const total_harga = items.reduce((s, it) => s + Number(it.subtotal || 0), 0);
     const kios_id = items.length > 0 ? items[0].kios_id : null;
 
@@ -112,7 +108,7 @@ const getKeranjang = async (req, res) => {
   }
 };
 
-// Update keranjang
+// UPDATE ITEM KERANJANG
 const updateKeranjangItem = async (req, res) => {
   const guest_id = getGuestId(req);
   const { id } = req.params;
@@ -122,13 +118,10 @@ const updateKeranjangItem = async (req, res) => {
 
   try {
     const check = await pool.query('SELECT * FROM keranjang WHERE id = $1 AND guest_id = $2', [id, guest_id]);
-    if (check.rows.length === 0) {
-      return res.status(404).json({ message: 'Item tidak ditemukan' });
-    }
+    if (check.rows.length === 0) return res.status(404).json({ message: 'Item tidak ditemukan' });
 
     const newJumlah = jumlah ?? check.rows[0].jumlah;
 
-    // kalau jumlah <= 0, hapus item
     if (newJumlah <= 0) {
       await pool.query('DELETE FROM keranjang WHERE id = $1 AND guest_id = $2', [id, guest_id]);
       return res.json({ message: 'Item dihapus karena jumlah = 0' });
@@ -156,7 +149,7 @@ const updateKeranjangItem = async (req, res) => {
 
     res.json({
       message: 'Item diperbarui',
-      item: formatKeranjang(responseItem, req)
+      item: formatKeranjang(responseItem)
     });
   } catch (err) {
     console.error('updateKeranjangItem error:', err);
@@ -164,16 +157,14 @@ const updateKeranjangItem = async (req, res) => {
   }
 };
 
-// Hapus item keranjang
+// HAPUS ITEM KERANJANG
 const removeFromKeranjang = async (req, res) => {
   const guest_id = getGuestId(req);
   const { id } = req.params;
 
-  if (!guest_id) 
-    return res.status(400).json({ message: 'guest_id wajib dikirim' });
+  if (!guest_id) return res.status(400).json({ message: 'guest_id wajib dikirim' });
 
   try {
-    // Ambil data dulu sebelum hapus
     const check = await pool.query(
       `SELECT k.*, m.nama_menu, m.harga, m.foto_menu
        FROM keranjang k
@@ -182,15 +173,11 @@ const removeFromKeranjang = async (req, res) => {
       [id, guest_id]
     );
 
-    if (check.rows.length === 0) {
-      return res.status(404).json({ message: 'Item tidak ditemukan' });
-    }
+    if (check.rows.length === 0) return res.status(404).json({ message: 'Item tidak ditemukan' });
 
-    // Hapus item
     await pool.query(`DELETE FROM keranjang WHERE id = $1 AND guest_id = $2`, [id, guest_id]);
 
-    // Format response konsisten
-    const item = formatKeranjang(check.rows[0], req);
+    const item = formatKeranjang(check.rows[0]);
 
     res.json({ message: 'Item dihapus', item });
   } catch (err) {
@@ -198,8 +185,6 @@ const removeFromKeranjang = async (req, res) => {
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
-
-
 
 module.exports = {
   addToKeranjang,
