@@ -4,7 +4,7 @@ const { formatKios, formatMenu } = require('../utils/formatter');
 const cloudinary = require('../utils/cloudinary');
 const fs = require('fs');
 
-//registrasi kios penjual
+// registrasi kios penjual
 const createKios = async (req, res) => {
   const penjual_id = req.user.id; 
   const { nama_kios, nama_bank, nomor_rekening } = req.body;
@@ -12,18 +12,35 @@ const createKios = async (req, res) => {
   if (!penjual_id) return res.status(400).json({ message: 'penjual_id diperlukan' });
 
   try {
+    // cek apakah penjual valid
     const penjual = await pool.query('SELECT * FROM penjual WHERE id = $1', [penjual_id]);
-    if (penjual.rows.length === 0) return res.status(400).json({ message: 'Penjual tidak valid' });
+    if (penjual.rows.length === 0) {
+      return res.status(400).json({ message: 'Penjual tidak valid' });
+    }
 
+    // cek apakah penjual sudah punya kios
     const cek = await pool.query('SELECT * FROM kios WHERE penjual_id = $1', [penjual_id]);
-    if (cek.rows.length > 0) return res.status(409).json({ message: 'Kios sudah terdaftar' });
+    if (cek.rows.length > 0) {
+      return res.status(409).json({ message: 'Kios sudah terdaftar untuk penjual ini' });
+    }
 
+    // cek apakah nama kios sudah dipakai (unik)
+    const cekNamaKios = await pool.query(
+      'SELECT * FROM kios WHERE LOWER(nama_kios) = LOWER($1)',
+      [nama_kios]
+    );
+    if (cekNamaKios.rows.length > 0) {
+      return res.status(409).json({ message: 'Nama kios telah digunakan, silakan pilih nama lain' });
+    }
+
+    // insert kios baru
     const result = await pool.query(`
       INSERT INTO kios (penjual_id, nama_kios, nama_bank, nomor_rekening)
       VALUES ($1, $2, $3, $4)
       RETURNING *
     `, [penjual_id, nama_kios, nama_bank, nomor_rekening]);
 
+    // generate OTP
     const kode_otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiredAt = new Date(Date.now() + 3 * 60 * 1000); // 3 menit
 
@@ -34,7 +51,10 @@ const createKios = async (req, res) => {
 
     await sendWhatsAppOTP(penjual.rows[0].no_hp, kode_otp);
 
-    res.status(201).json({ message: 'Kios berhasil didaftarkan dan OTP telah dikirim ke WhatsApp' });
+    res.status(201).json({
+      message: 'Kios berhasil didaftarkan dan OTP telah dikirim ke WhatsApp',
+      data: result.rows[0]
+    });
 
   } catch (err) {
     console.error(err);
@@ -92,26 +112,14 @@ const getMenusByKios = async (req, res) => {
 
 //profile kios(penjual)
 const getKiosByPenjual = async (req, res) => {
-  const { nama_kios } = req.query; // ambil dari query param
-
-  if (!nama_kios) {
-    return res.status(400).json({ message: 'Nama kios harus diisi' });
-  }
+  const penjualId = req.user?.id;
+  if (!penjualId) return res.status(401).json({ message: 'Tidak ada ID penjual' });
 
   try {
-    const result = await pool.query(
-      'SELECT * FROM kios WHERE LOWER(nama_kios) LIKE LOWER($1)',
-      [`%${nama_kios}%`]
-    );
+    const result = await pool.query('SELECT * FROM kios WHERE penjual_id = $1', [penjualId]);
+    if (result.rowCount === 0) return res.status(404).json({ message: 'Kios tidak ditemukan' });
 
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: 'Kios tidak ditemukan' });
-    }
-
-    res.json({
-      message: 'Data kios berhasil diambil',
-      data: result.rows.map(k => formatKios(k))
-    });
+    res.json({ message: 'Data kios berhasil diambil', data: formatKios(result.rows[0]) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Gagal mengambil data kios' });
