@@ -6,7 +6,7 @@ const kiosController = require('../controllers/kiosController');
 const menuController = require('../controllers/menuController'); 
 
 // Profile Kios penjual
-router.get('/profil', authMiddleware, kiosController.getKiosByPenjual); 
+router.get('/search', kiosController.getKiosByPenjual);
 router.put('/profil', authMiddleware, upload.single('gambar_kios'), kiosController.updateKios); 
 
 // Buat kios baru penjual

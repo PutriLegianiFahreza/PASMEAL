@@ -201,7 +201,7 @@ const forgotPassword = async (req, res) => {
   try {
     const user = await pool.query('SELECT * FROM penjual WHERE no_hp = $1', [no_hp]);
     if (user.rowCount === 0) {
-      return res.status(404).json({ message: 'No HP tidak ditemukan' });
+      return res.status(404).json({ message: 'Nomor WhatsApp tidak ditemukan' });
     }
 
     const token = crypto.randomBytes(32).toString('hex');
@@ -220,7 +220,7 @@ const forgotPassword = async (req, res) => {
     await sendWhatsApp(no_hp, message);
 
     console.log(`✅ Link reset password terkirim ke ${no_hp}`);
-    res.status(200).json({ message: 'Link reset password telah dikirim via WhatsApp.' });
+    res.status(200).json({ message: 'Link reset password telah dikirim ke WhatsApp Anda.' });
 
   } catch (error) {
     console.error(' Gagal memproses lupa password:', error);

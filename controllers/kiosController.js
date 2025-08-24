@@ -92,14 +92,26 @@ const getMenusByKios = async (req, res) => {
 
 //profile kios(penjual)
 const getKiosByPenjual = async (req, res) => {
-  const penjualId = req.user?.id;
-  if (!penjualId) return res.status(401).json({ message: 'Tidak ada ID penjual' });
+  const { nama_kios } = req.query; // ambil dari query param
+
+  if (!nama_kios) {
+    return res.status(400).json({ message: 'Nama kios harus diisi' });
+  }
 
   try {
-    const result = await pool.query('SELECT * FROM kios WHERE penjual_id = $1', [penjualId]);
-    if (result.rowCount === 0) return res.status(404).json({ message: 'Kios tidak ditemukan' });
+    const result = await pool.query(
+      'SELECT * FROM kios WHERE LOWER(nama_kios) LIKE LOWER($1)',
+      [`%${nama_kios}%`]
+    );
 
-    res.json({ message: 'Data kios berhasil diambil', data: formatKios(result.rows[0]) });
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Kios tidak ditemukan' });
+    }
+
+    res.json({
+      message: 'Data kios berhasil diambil',
+      data: result.rows.map(k => formatKios(k))
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Gagal mengambil data kios' });
