@@ -29,24 +29,10 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Buat instance multer
 const upload = multer({
   storage,
   fileFilter,
   limits: { fileSize: 2 * 1024 * 1024 } // Max 2MB
-}).single('file'); // sesuaikan nama field file di form
+});
 
-// Middleware custom untuk menangani error
-const uploadMiddleware = (req, res, next) => {
-  upload(req, res, (err) => {
-    if (err) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ message: 'File terlalu besar. Maksimal 2 MB.' });
-      }
-      return res.status(400).json({ message: err.message });
-    }
-    next();
-  });
-};
-
-module.exports = uploadMiddleware;
+module.exports = upload;
