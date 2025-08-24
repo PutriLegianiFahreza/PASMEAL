@@ -342,7 +342,7 @@ const getDetailPesanan = async (req, res) => {
     pesanan.items = detailsRes.rows.map(item => ({
       ...item,
       foto_menu: item.foto_menu
-    ? ``
+    ? `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/${item.foto_menu}`
     : null
     }));
 
