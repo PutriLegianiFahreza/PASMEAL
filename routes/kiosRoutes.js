@@ -7,7 +7,11 @@ const menuController = require('../controllers/menuController');
 
 // Profile Kios penjual
 router.get('/profil', authMiddleware, kiosController.getKiosByPenjual); 
-router.put('/profil', authMiddleware, upload.single('gambar_kios'), kiosController.updateKios); 
+router.put("/:id", authMiddleware, (req, res, next) => {
+  console.log("Content-Type:", req.headers['content-type']);
+  console.log("Body keys:", Object.keys(req.body));
+  next();
+}, upload.single("gambar_kios"), kiosController.updateKios);
 
 // Buat kios baru penjual
 router.post('/', authMiddleware, kiosController.createKios);
@@ -15,12 +19,11 @@ router.post('/', authMiddleware, kiosController.createKios);
 // Endpoint Kios untuk pembeli
 router.get('/homepage', kiosController.getKiosHomepage);
 router.get('/search', kiosController.searchKios);
-router.get('/', kiosController.getAllKios);
+
+// urutan id harus paling bawah
+router.get('/:id/menus/search', menuController.searchMenusByKios);
 router.get('/:id/menus', kiosController.getMenusByKios);
 router.get('/:id', kiosController.getKiosDetail);
-
-
-// Tambahkan pencarian menu di kios tertentu
-router.get('/:id/menus/search', menuController.searchMenusByKios);
+router.get('/', kiosController.getAllKios);
 
 module.exports = router;

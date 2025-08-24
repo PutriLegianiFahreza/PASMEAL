@@ -1,5 +1,4 @@
 const pool = require('../config/db');
-const { formatMenu } = require('../utils/formatter');
 const cloudinary = require('../utils/cloudinary');
 const fs = require('fs');
 
@@ -11,8 +10,7 @@ const getAllMenu = async (req, res) => {
       'SELECT * FROM menu WHERE penjual_id = $1 ORDER BY created_at DESC',
       [penjualId]
     );
-    const menus = result.rows.map(menu => formatMenu(menu));
-    res.status(200).json(menus);
+    res.status(200).json(result.rows);
   } catch (error) {
     res.status(500).json({ message: 'Gagal mengambil menu', error: error.message });
   }
@@ -20,27 +18,31 @@ const getAllMenu = async (req, res) => {
 
 // Tambah menu (penjual)
 const addMenu = async (req, res) => {
-  const penjual_id = req.user.id;
-  const kios_id = req.user.kios_id;
-  const { nama_menu, deskripsi, harga, estimasi_menit, status_tersedia } = req.body;
-
-  let foto_menu = null;
-  if (req.file) {
-    const result = await cloudinary.uploader.upload(req.file.path, { folder: 'menus' });
-    fs.unlinkSync(req.file.path);
-    foto_menu = result.secure_url;
-  }
-
   try {
-    const result = await pool.query(
+    const penjual_id = req.user.id;
+    const kios_id = req.user.kios_id;
+    const { nama_menu, deskripsi, harga, estimasi_menit, status_tersedia } = req.body;
+
+    let foto_menu = null;
+    let foto_public_id = null;
+
+    if (req.file) {
+      const uploadResult = await cloudinary.uploader.upload(req.file.path, { folder: 'menus' });
+      fs.unlinkSync(req.file.path); // hapus file lokal
+      foto_menu = uploadResult.secure_url;
+      foto_public_id = uploadResult.public_id;
+    }
+
+    const dbResult = await pool.query(
       `INSERT INTO menu 
-       (nama_menu, deskripsi, harga, foto_menu, penjual_id, kios_id, estimasi_menit, status_tersedia)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+       (nama_menu, deskripsi, harga, foto_menu, foto_public_id, penjual_id, kios_id, estimasi_menit, status_tersedia)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [
         nama_menu,
         deskripsi,
         harga,
         foto_menu,
+        foto_public_id,
         penjual_id,
         kios_id,
         estimasi_menit,
@@ -48,51 +50,67 @@ const addMenu = async (req, res) => {
       ]
     );
 
-    const menu = formatMenu(result.rows[0]);
-    res.status(201).json({ message: 'Menu berhasil ditambahkan', data: menu });
+    res.status(201).json({ 
+      message: 'Menu berhasil ditambahkan', 
+      data: dbResult.rows[0] 
+    });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: 'Terjadi kesalahan server', error: error.message });
   }
 };
 
-// Update menu (penjual)
+// Update menu
 const updateMenu = async (req, res) => {
-  const penjual_id = req.user.id;
-  const menuId = parseInt(req.params.id);
-  if (isNaN(menuId)) return res.status(400).json({ message: 'ID menu tidak valid' });
-
-  const allowedFields = ['nama_menu','deskripsi','harga','estimasi_menit','status_tersedia'];
-  const updates = [];
-  const values = [];
-
-  allowedFields.forEach(field => {
-    if (req.body[field] !== undefined) {
-      updates.push(`${field} = $${values.length + 1}`);
-      values.push(req.body[field]);
-    }
-  });
-
-  if (req.file) {
-    const result = await cloudinary.uploader.upload(req.file.path, { folder: 'menus' });
-    fs.unlinkSync(req.file.path);
-    updates.push(`foto_menu = $${values.length + 1}`);
-    values.push(result.secure_url);
-  }
-
-  if (updates.length === 0) return res.status(400).json({ message: 'Tidak ada data yang diupdate' });
-
-  values.push(menuId);
-  values.push(penjual_id);
-  const query = `UPDATE menu SET ${updates.join(', ')} WHERE id = $${values.length - 1} AND penjual_id = $${values.length} RETURNING *`;
+  const { id } = req.params;
+  const { nama_menu, harga, deskripsi } = req.body;
 
   try {
-    const result = await pool.query(query, values);
-    if (result.rowCount === 0) return res.status(404).json({ message: 'Menu tidak ditemukan atau bukan milik kamu' });
+    // Pastikan menu milik penjual yang login
+    const existing = await pool.query(
+      "SELECT foto_public_id FROM menu WHERE id = $1 AND penjual_id = $2",
+      [id, req.user.id]
+    );
 
-    const menu = formatMenu(result.rows[0]);
-    res.status(200).json({ message: 'Menu berhasil diupdate', data: menu });
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ message: "Menu tidak ditemukan atau bukan milik Anda" });
+    }
+
+    let foto_menu = null;
+    let foto_public_id = existing.rows[0].foto_public_id;
+
+    if (req.file) {
+      // Kalau ada foto baru, hapus yang lama
+      if (foto_public_id) {
+        await cloudinary.uploader.destroy(foto_public_id);
+      }
+
+      // Upload yang baru
+      const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+        folder: "menu",
+      });
+
+      foto_menu = uploadResult.secure_url;
+      foto_public_id = uploadResult.public_id;
+
+      // hapus file lokal
+      fs.unlinkSync(req.file.path);
+    }
+
+    const result = await pool.query(
+      `UPDATE menu 
+       SET nama_menu = $1, harga = $2, deskripsi = $3, 
+           foto_menu = COALESCE($4, foto_menu), 
+           foto_public_id = COALESCE($5, foto_public_id)
+       WHERE id = $6 AND penjual_id = $7
+       RETURNING *`,
+      [nama_menu, harga, deskripsi, foto_menu, foto_public_id, id, req.user.id]
+    );
+
+    res.json({ message: "Menu berhasil diperbarui", menu: result.rows[0] });
   } catch (error) {
-    res.status(500).json({ message: 'Terjadi kesalahan server', error: error.message });
+    console.error("Error update menu:", error);
+    res.status(500).json({ message: "Terjadi kesalahan pada server" });
   }
 };
 
@@ -109,8 +127,7 @@ const getMenuById = async (req, res) => {
     );
     if (result.rowCount === 0) return res.status(404).json({ message: 'Menu tidak ditemukan' });
 
-    const menu = formatMenu(result.rows[0]);
-    res.status(200).json(menu);
+    res.status(200).json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ message: 'Gagal mengambil detail menu', error: error.message });
   }
@@ -123,8 +140,17 @@ const deleteMenu = async (req, res) => {
   if (isNaN(menuId)) return res.status(400).json({ message: 'ID menu tidak valid' });
 
   try {
-    const result = await pool.query('DELETE FROM menu WHERE id = $1 AND penjual_id = $2 RETURNING *', [menuId, penjualId]);
-    if (result.rowCount === 0) return res.status(404).json({ message: 'Menu tidak ditemukan atau bukan milik kamu' });
+    // ambil data dulu biar bisa hapus fotonya
+    const menu = await pool.query('SELECT foto_public_id FROM menu WHERE id = $1 AND penjual_id = $2', [menuId, penjualId]);
+    if (menu.rows.length === 0) {
+      return res.status(404).json({ message: 'Menu tidak ditemukan atau bukan milik kamu' });
+    }
+
+    if (menu.rows[0].foto_public_id) {
+      await cloudinary.uploader.destroy(menu.rows[0].foto_public_id);
+    }
+
+    await pool.query('DELETE FROM menu WHERE id = $1 AND penjual_id = $2', [menuId, penjualId]);
     res.status(200).json({ message: 'Menu berhasil dihapus' });
   } catch (error) {
     res.status(500).json({ message: 'Gagal menghapus menu', error: error.message });
@@ -147,8 +173,7 @@ const getMenusPaginated = async (req, res) => {
       [penjualId, limit, offset]
     );
 
-    const menus = result.rows.map(menu => formatMenu(menu));
-    res.status(200).json({ page, limit, total, data: menus });
+    res.status(200).json({ page, limit, total, data: result.rows });
   } catch (err) {
     res.status(500).json({ message: 'Gagal mengambil menu', error: err.message });
   }
@@ -158,8 +183,7 @@ const getMenusPaginated = async (req, res) => {
 const getNewMenus = async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM menu WHERE status_tersedia = true ORDER BY created_at DESC LIMIT 5');
-    const menus = result.rows.map(menu => formatMenu(menu));
-    res.json(menus);
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -172,8 +196,7 @@ const searchMenus = async (req, res) => {
 
   try {
     const result = await pool.query('SELECT * FROM menu WHERE nama_menu ILIKE $1 AND status_tersedia = true', [`%${query}%`]);
-    const menus = result.rows.map(menu => formatMenu(menu));
-    res.json(menus);
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -191,8 +214,7 @@ const searchMenusByKios = async (req, res) => {
       'SELECT * FROM menu WHERE kios_id = $1 AND nama_menu ILIKE $2 AND status_tersedia = true',
       [kiosId, `%${query}%`]
     );
-    const menus = result.rows.map(menu => formatMenu(menu));
-    res.json(menus);
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -210,8 +232,7 @@ const getMenuByIdForBuyer = async (req, res) => {
     );
     if (result.rowCount === 0) return res.status(404).json({ message: 'Menu tidak ditemukan' });
 
-    const menu = result.rows[0];
-    res.status(200).json(menu);
+    res.status(200).json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ message: 'Gagal mengambil detail menu', error: error.message });
   }

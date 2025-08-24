@@ -2,7 +2,8 @@ const pool = require('../config/db');
 const crypto = require('crypto');
 const getGuestId = require('../utils/getGuestId');
 const { sendWhatsApp: sendWaMessage } = require('../utils/wa');
-const { formatPesananItem } = require('../utils/formatter');
+
+const CLOUD_NAME = process.env.CLOUD_NAME || '<CLOUD_NAME>';
 
 function formatTanggal(date) {
  if (!date) return null;
@@ -68,14 +69,12 @@ const notifyPenjual = async (kiosId, pesananId) => {
     } else {
       token = tokenData.rows[0].token;
       if (tokenData.rows[0].is_used) {
-        console.log(`Notifikasi untuk pesanan ${pesananId} sudah terkirim sebelumnya.`);
+       console.log(`Notifikasi untuk pesanan ${pesananId} sudah terkirim sebelumnya.`);
         return; // WA sudah dikirim, jangan kirim lagi
       }
     }
-
     const linkDashboard = `https://pas-meal.vercel.app/OrderPage?token=${token}`;
     const message = `📢 Pesanan Baru!\nID Pesanan: ${pesananId}\nKlik untuk lihat dan kelola: ${linkDashboard}`;
-
     // kirim WA
     await sendWaMessage(noHpPenjual, message);
     console.log(`WA notifikasi pesanan ke penjual (${noHpPenjual}) terkirim.`);
@@ -339,8 +338,13 @@ const getDetailPesanan = async (req, res) => {
       [id]
     );
 
-    // Gunakan formatter utils
-    pesanan.items = detailsRes.rows.map(item => formatPesananItem(item, req));
+    // Pakai Cloudinary langsung
+    pesanan.items = detailsRes.rows.map(item => ({
+      ...item,
+      foto_menu: item.foto_menu
+    ? ``
+    : null
+    }));
 
     // --- LOGIKA BARU: Ambil antrean di depan pesanan ini ---
     let antrean = [];
@@ -472,7 +476,7 @@ const getDetailPesananMasuk = async (req, res) => {
       return res.status(404).json({ message: "Pesanan tidak ditemukan dalam antrean aktif" });
     }
 
-    // ✅ Ambil detail menu dan gunakan formatter
+    // Ambil detail menu
     const detailMenuRes = await pool.query(
       `SELECT pd.nama_menu, pd.jumlah, pd.harga, pd.foto_menu 
        FROM pesanan_detail pd 
@@ -480,7 +484,12 @@ const getDetailPesananMasuk = async (req, res) => {
       [req.params.id]
     );
 
-    const menu = detailMenuRes.rows.map(item => formatPesananItem(item, req));
+    const menu = detailMenuRes.rows.map(item => ({
+      ...item,
+      foto_menu: item.foto_menu
+    ? `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/${item.foto_menu}`
+    : null
+    }));
 
     const data = {
       id: p.id,
@@ -496,7 +505,7 @@ const getDetailPesananMasuk = async (req, res) => {
       total_harga: Number(p.total_harga),
       total_estimasi: Number(p.total_estimasi),
       status: p.status,
-      menu, // sudah pakai formatter
+      menu, // langsung pakai Cloudinary
       estimasi_mulai_at: p.estimasi_mulai_at,
       estimasi_selesai_at: p.estimasi_selesai_at,
     };
@@ -637,7 +646,7 @@ const getDetailRiwayatPesanan = async (req, res) => {
 
     const nomor_antrian = antrianRes.rows.findIndex((row) => row.id === pesanan.id) + 1;
 
-    // Ambil detail menu & pakai formatter
+    // Ambil detail menu
     const detailMenuRes = await pool.query(
       `SELECT pd.nama_menu, pd.jumlah, pd.harga, pd.subtotal, pd.foto_menu 
        FROM pesanan_detail pd 
@@ -645,7 +654,12 @@ const getDetailRiwayatPesanan = async (req, res) => {
       [id]
     );
 
-    const menu = detailMenuRes.rows.map(item => formatPesananItem(item, req));
+    const menu = detailMenuRes.rows.map(item => ({
+      ...item,
+      foto_menu: item.foto_menu
+    ? `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/${item.foto_menu}`
+    : null
+    }));
 
     const data = {
       id: pesanan.id,
@@ -664,7 +678,7 @@ const getDetailRiwayatPesanan = async (req, res) => {
       total_harga: Number(pesanan.total_harga),
       total_estimasi: Number(pesanan.total_estimasi),
       status: pesanan.status,
-      menu, // sudah pakai formatter
+      menu, // langsung pakai Cloudinary
     };
 
     res.status(200).json(data);

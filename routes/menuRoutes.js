@@ -23,10 +23,10 @@ router.get('/paginated', authMiddleware, menuController.getMenusPaginated);
 router.post('/', verifiedMiddleware, upload.single('foto_menu'), menuController.addMenu);
 
 // Update menu (penjual)
-router.put('/:id', authMiddleware, upload.single('foto_menu'), menuController.updateMenu);
+router.put('/:id', verifiedMiddleware, upload.single('foto_menu'), menuController.updateMenu);
 
 // Hapus menu (penjual)
-router.delete('/:id', authMiddleware, menuController.deleteMenu);
+router.delete('/:id', verifiedMiddleware, menuController.deleteMenu);
 
 // Detail menu untuk pembeli
 router.get('/buyer/:id', menuController.getMenuByIdForBuyer);

@@ -1,6 +1,5 @@
 const pool = require('../config/db');
 const { sendWhatsAppOTP } = require('../utils/wa');
-const { formatKios, formatMenu } = require('../utils/formatter');
 const cloudinary = require('../utils/cloudinary');
 const fs = require('fs');
 
@@ -71,7 +70,7 @@ const createKios = async (req, res) => {
 const getKiosHomepage = async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM kios ORDER BY created_at DESC LIMIT 8');
-    res.json(result.rows.map(k => formatKios(k)));
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -85,7 +84,7 @@ const searchKios = async (req, res) => {
       'SELECT * FROM kios WHERE LOWER(nama_kios) LIKE LOWER($1)',
       [`%${query}%`]
     );
-    res.json(result.rows.map(k => formatKios(k)));
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -95,7 +94,7 @@ const searchKios = async (req, res) => {
 const getAllKios = async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM kios ORDER BY created_at DESC');
-    res.json(result.rows.map(k => formatKios(k)));
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -109,7 +108,7 @@ const getMenusByKios = async (req, res) => {
       'SELECT * FROM menu WHERE kios_id = $1 ORDER BY created_at DESC',
       [kiosId]
     );
-    res.json(result.rows.map(m => formatMenu(m)));
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -123,8 +122,7 @@ const getKiosByPenjual = async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM kios WHERE penjual_id = $1', [penjualId]);
     if (result.rowCount === 0) return res.status(404).json({ message: 'Kios tidak ditemukan' });
-
-    res.json({ message: 'Data kios berhasil diambil', data: formatKios(result.rows[0]) });
+    res.json({ message: 'Data kios berhasil diambil', data: result.rows[0] });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Gagal mengambil data kios' });
@@ -133,46 +131,54 @@ const getKiosByPenjual = async (req, res) => {
 
 //UPDATE PROFILE KIOS(penjual)
 const updateKios = async (req, res) => {
-  const { nama_kios, deskripsi, nama_bank, nomor_rekening } = req.body;
-  const penjualId = req.user?.id;
-  if (!penjualId) return res.status(401).json({ message: 'Tidak ada ID penjual' });
-
   try {
-    const { rows, rowCount } = await pool.query('SELECT * FROM kios WHERE penjual_id = $1', [penjualId]);
-    if (rowCount === 0) return res.status(404).json({ message: 'Kios tidak ditemukan' });
-
-    const oldKios = rows[0];
-    let gambar_kios = oldKios.gambar_kios;
-
-    // Upload ke Cloudinary jika ada file baru
-    if (req.file) {
-      const result = await cloudinary.uploader.upload(req.file.path, { folder: 'kios' });
-      fs.unlinkSync(req.file.path); // hapus file lokal
-      gambar_kios = result.secure_url;
+    const kiosId = parseInt(req.params.id, 10);
+    if (isNaN(kiosId)) {
+      return res.status(400).json({ message: "ID kios harus berupa angka" });
     }
 
-    const resultUpdate = await pool.query(`
-      UPDATE kios 
-      SET nama_kios = COALESCE($1, $2),
-          deskripsi = COALESCE($3, $4),
-          nama_bank = COALESCE($5, $6),
-          nomor_rekening = COALESCE($7, $8),
-          gambar_kios = $9
-      WHERE penjual_id = $10
-      RETURNING *
-    `, [
-      nama_kios, oldKios.nama_kios,
-      deskripsi, oldKios.deskripsi,
-      nama_bank, oldKios.nama_bank,
-      nomor_rekening, oldKios.nomor_rekening,
-      gambar_kios,
-      penjualId
-    ]);
+    const { nama_kios, deskripsi, nomor_rekening, nama_bank } = req.body;
 
-    res.json({ message: 'Data kios berhasil diperbarui', data: formatKios(resultUpdate.rows[0]) });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Gagal memperbarui data kios' });
+    // cek kios ada atau tidak
+    const kios = await pool.query("SELECT * FROM kios WHERE id = $1", [kiosId]);
+    if (kios.rows.length === 0) {
+      return res.status(404).json({ message: "Kios tidak ditemukan" });
+    }
+
+    let gambarUrl = kios.rows[0].gambar_kios; // fallback: pakai gambar lama
+
+    console.log("req.file:", req.file); // debug file upload
+
+    // kalau ada file baru → upload ke cloudinary
+    if (req.file) {
+      const upload = await cloudinary.uploader.upload(req.file.path, { folder: "kios" });
+      gambarUrl = upload.secure_url;
+
+      // hapus file lokal setelah upload
+      fs.unlink(req.file.path, (err) => {
+        if (err) console.error("Gagal hapus file lokal:", err);
+      });
+    }
+
+    // gunakan nilai lama jika field tidak dikirim
+    const updatedNama = nama_kios ?? kios.rows[0].nama_kios;
+    const updatedDeskripsi = deskripsi ?? kios.rows[0].deskripsi;
+    const updatedNomorRek = nomor_rekening ?? kios.rows[0].nomor_rekening;
+    const updatedNamaBank = nama_bank ?? kios.rows[0].nama_bank;
+
+    // update data kios
+    const result = await pool.query(
+      `UPDATE kios 
+       SET nama_kios = $1, deskripsi = $2, nomor_rekening = $3, nama_bank = $4, gambar_kios = $5
+       WHERE id = $6
+       RETURNING *`,
+      [updatedNama, updatedDeskripsi, updatedNomorRek, updatedNamaBank, gambarUrl, kiosId]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Terjadi kesalahan pada server" });
   }
 };
 
@@ -189,7 +195,7 @@ const getKiosDetail = async (req, res) => {
 
     if (result.rowCount === 0) return res.status(404).json({ message: 'Kios tidak ditemukan' });
 
-    res.json({ message: 'Detail kios berhasil diambil', data: formatKios(result.rows[0]) });
+    res.json({ message: 'Detail kios berhasil diambil', data: result.rows[0] });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Gagal mengambil detail kios' });
