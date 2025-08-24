@@ -25,11 +25,10 @@ const addToKeranjang = async (req, res) => {
       'SELECT DISTINCT kios_id FROM keranjang WHERE guest_id = $1',
       [guest_id]
     );
+
     if (existingCart.rows.length > 0 && existingCart.rows[0].kios_id !== kios_id) {
-      return res.status(409).json({
-        message: 'Anda memiliki item dari kios lain di keranjang. Kosongkan keranjang untuk melanjutkan.',
-        error_code: 'DIFFERENT_KIOS'
-      });
+      // hapus semua item dari kios lama
+      await pool.query('DELETE FROM keranjang WHERE guest_id = $1', [guest_id]);
     }
 
     // cek apakah item sudah ada
