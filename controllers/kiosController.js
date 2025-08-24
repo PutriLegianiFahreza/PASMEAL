@@ -17,6 +17,11 @@ const createKios = async (req, res) => {
       return res.status(400).json({ message: 'Penjual tidak valid' });
     }
 
+    const noHp = penjual.rows[0].no_hp;
+    if (!noHp) {
+      return res.status(400).json({ message: 'Nomor WhatsApp penjual belum terdaftar' });
+    }
+
     // cek apakah penjual sudah punya kios
     const cek = await pool.query('SELECT * FROM kios WHERE penjual_id = $1', [penjual_id]);
     if (cek.rows.length > 0) {
@@ -43,12 +48,24 @@ const createKios = async (req, res) => {
     const kode_otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiredAt = new Date(Date.now() + 3 * 60 * 1000); // 3 menit
 
+    // hapus OTP aktif sebelumnya
+    await pool.query(`DELETE FROM otp WHERE penjual_id = $1 AND is_used = FALSE`, [penjual_id]);
+
     await pool.query(`
       INSERT INTO otp (penjual_id, otp_code, expired_at, is_used)
       VALUES ($1, $2, $3, FALSE)
     `, [penjual_id, kode_otp, expiredAt]);
 
-    await sendWhatsAppOTP(penjual.rows[0].no_hp, kode_otp);
+    // kirim OTP ke WA (try/catch supaya tidak crash kalau koneksi WA down)
+    (async () => {
+      try {
+        const { sendWhatsAppOTP } = require('../utils/wa');
+        await sendWhatsAppOTP(noHp, kode_otp);
+        console.log(`OTP dikirim ke ${noHp}`);
+      } catch (err) {
+        console.error('Gagal kirim OTP WA:', err.message);
+      }
+    })();
 
     return res.status(201).json({
       message: 'Kios berhasil didaftarkan dan OTP telah dikirim ke WhatsApp',

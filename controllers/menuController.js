@@ -21,7 +21,15 @@ const addMenu = async (req, res) => {
   try {
     const penjual_id = req.user.id;
     const kios_id = req.user.kios_id;
-    const { nama_menu, deskripsi, harga, estimasi_menit, status_tersedia } = req.body;
+
+    // Ambil data dari body, gunakan default kalau undefined
+    let { nama_menu, deskripsi, harga, estimasi_menit, status_tersedia } = req.body;
+
+    nama_menu = nama_menu?.trim() || ''; // default string kosong
+    deskripsi = deskripsi?.trim() || '';
+    harga = harga !== undefined ? parseInt(harga, 10) : 0; // default 0 jika undefined
+    estimasi_menit = estimasi_menit !== undefined ? parseInt(estimasi_menit, 10) : 10;
+    status_tersedia = status_tersedia !== undefined ? status_tersedia : true;
 
     let foto_menu = null;
     let foto_public_id = null;
@@ -32,6 +40,9 @@ const addMenu = async (req, res) => {
       foto_menu = uploadResult.secure_url;
       foto_public_id = uploadResult.public_id;
     }
+
+    // Debug sebelum insert
+    console.log({ nama_menu, deskripsi, harga, estimasi_menit, status_tersedia, penjual_id, kios_id });
 
     const dbResult = await pool.query(
       `INSERT INTO menu 
@@ -46,7 +57,7 @@ const addMenu = async (req, res) => {
         penjual_id,
         kios_id,
         estimasi_menit,
-        status_tersedia !== undefined ? status_tersedia : true
+        status_tersedia
       ]
     );
 
