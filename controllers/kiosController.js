@@ -51,14 +51,19 @@ const createKios = async (req, res) => {
 
     await sendWhatsAppOTP(penjual.rows[0].no_hp, kode_otp);
 
-    res.status(201).json({
+    return res.status(201).json({
       message: 'Kios berhasil didaftarkan dan OTP telah dikirim ke WhatsApp',
       data: result.rows[0]
     });
 
   } catch (err) {
+    // cek error unik (duplicate key di DB)
+    if (err.code === "23505") {
+      return res.status(409).json({ message: "Nama kios sudah digunakan" });
+    }
+
     console.error(err);
-    res.status(500).json({ message: 'Terjadi kesalahan saat membuat kios' });
+    return res.status(500).json({ message: "Terjadi kesalahan saat membuat kios" });
   }
 };
 
