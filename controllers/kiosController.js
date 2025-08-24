@@ -1,6 +1,6 @@
 const pool = require('../config/db');
 const { sendWhatsAppOTP } = require('../utils/wa');
-const cloudinary = require('../utils/cloudinary');
+// const cloudinary = require('../utils/cloudinary');
 const fs = require('fs');
 
 // registrasi kios penjual
