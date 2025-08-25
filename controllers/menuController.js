@@ -75,73 +75,66 @@ const addMenu = async (req, res) => {
 };
 
 // Update menu
-// Update menu
 const updateMenu = async (req, res) => {
   const { id } = req.params;
-  let { nama_menu, harga, deskripsi, status_tersedia, estimasi_menit } = req.body;
+  const penjual_id = req.user.id;
+  const {
+    nama_menu,
+    deskripsi,
+    harga,
+    foto_menu,
+    status_tersedia,
+    kios_id,
+    estimasi_menit,
+    foto_public_id
+  } = req.body;
 
   try {
-    // Ambil data lama
-    const existing = await pool.query(
-      "SELECT * FROM menu WHERE id = $1 AND penjual_id = $2",
-      [id, req.user.id]
-    );
-
-    if (existing.rows.length === 0) {
-      return res.status(404).json({ message: "Menu tidak ditemukan atau bukan milik Anda" });
+    // ambil menu lama dulu
+    const result = await pool.query('SELECT * FROM menu WHERE id = $1 AND penjual_id = $2', [id, penjual_id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Menu tidak ditemukan' });
     }
 
-    const oldMenu = existing.rows[0];
-    let foto_menu = oldMenu.foto_menu;
-    let foto_public_id = oldMenu.foto_public_id;
+    const oldMenu = result.rows[0];
 
-    if (req.file) {
-      // Kalau ada foto baru, hapus yang lama
-      if (foto_public_id) {
-        await cloudinary.uploader.destroy(foto_public_id);
-      }
+    // kalau field gak dikirim, pakai value lama
+    const updatedMenu = {
+      nama_menu: nama_menu ?? oldMenu.nama_menu,
+      deskripsi: deskripsi ?? oldMenu.deskripsi,
+      harga: harga ?? oldMenu.harga,
+      foto_menu: foto_menu ?? oldMenu.foto_menu,
+      status_tersedia: status_tersedia ?? oldMenu.status_tersedia,
+      kios_id: kios_id ?? oldMenu.kios_id,
+      estimasi_menit: estimasi_menit ?? oldMenu.estimasi_menit,
+      foto_public_id: foto_public_id ?? oldMenu.foto_public_id
+    };
 
-      // Upload yang baru
-      const uploadResult = await cloudinary.uploader.upload(req.file.path, {
-        folder: "menus",
-      });
-
-      foto_menu = uploadResult.secure_url;
-      foto_public_id = uploadResult.public_id;
-
-      // hapus file lokal
-      fs.unlinkSync(req.file.path);
-    }
-
-    // Gunakan nilai baru kalau ada, kalau tidak pakai nilai lama
-    const result = await pool.query(
-      `UPDATE menu 
-       SET nama_menu = $1, 
-           harga = $2, 
-           deskripsi = $3, 
-           status_tersedia = $4,
-           estimasi_menit = $5,
-           foto_menu = $6, 
-           foto_public_id = $7
-       WHERE id = $8 AND penjual_id = $9
+    // update ke db
+    const updated = await pool.query(
+      `UPDATE menu
+       SET nama_menu = $1, deskripsi = $2, harga = $3, foto_menu = $4, 
+           status_tersedia = $5, kios_id = $6, estimasi_menit = $7, foto_public_id = $8
+       WHERE id = $9 AND penjual_id = $10
        RETURNING *`,
       [
-        nama_menu ?? oldMenu.nama_menu,
-        harga ?? oldMenu.harga,
-        deskripsi ?? oldMenu.deskripsi,
-        status_tersedia ?? oldMenu.status_tersedia,
-        estimasi_menit ?? oldMenu.estimasi_menit,
-        foto_menu,
-        foto_public_id,
+        updatedMenu.nama_menu,
+        updatedMenu.deskripsi,
+        updatedMenu.harga,
+        updatedMenu.foto_menu,
+        updatedMenu.status_tersedia,
+        updatedMenu.kios_id,
+        updatedMenu.estimasi_menit,
+        updatedMenu.foto_public_id,
         id,
-        req.user.id,
+        penjual_id
       ]
     );
 
-    res.json({ message: "Menu berhasil diperbarui", menu: result.rows[0] });
-  } catch (error) {
-    console.error("Error update menu:", error);
-    res.status(500).json({ message: "Terjadi kesalahan pada server" });
+    res.json({ message: 'Menu berhasil diperbarui', menu: updated.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
 
