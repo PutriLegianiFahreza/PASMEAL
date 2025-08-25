@@ -291,6 +291,7 @@ const autoLoginViaLink = async (req, res) => {
   }
 
   try {
+    // cek token DB
     const tokenRes = await pool.query(
       `SELECT * FROM auto_login_tokens 
        WHERE token = $1 
@@ -305,11 +306,13 @@ const autoLoginViaLink = async (req, res) => {
 
     const autoToken = tokenRes.rows[0];
 
+    // tandai token DB sudah digunakan
     await pool.query(
       `UPDATE auto_login_tokens SET is_used = TRUE WHERE id = $1`,
       [autoToken.id]
     );
 
+    // generate JWT sementara khusus akses pesanan
     const jwtToken = jwt.sign(
       {
         penjual_id: autoToken.penjual_id,
@@ -317,7 +320,7 @@ const autoLoginViaLink = async (req, res) => {
         is_verified: true  
       },
       process.env.JWT_SECRET,
-      { expiresIn: '2h' }
+      { expiresIn: '2h' } // bisa sesuaikan
     );
 
     return res.json({
