@@ -120,41 +120,16 @@ const getAllKios = async (req, res) => {
 // Ambil menu berdasarkan kios(pembeli)
 const getMenusByKios = async (req, res) => {
   try {
-    const kiosId = Number(req.params.id);
-    const guest_id = getGuestId(req); // ambil guest_id
-
-    if (guest_id) {
-      // cek apakah ada item dari kios lain di keranjang
-      const existing = await pool.query(
-        'SELECT DISTINCT kios_id FROM keranjang WHERE guest_id = $1',
-        [guest_id]
-      );
-
-      if (existing.rows.length > 0 && existing.rows[0].kios_id !== kiosId) {
-        // hapus keranjang lama otomatis, tapi menu tetap aman
-        await pool.query('DELETE FROM keranjang WHERE guest_id = $1', [guest_id]);
-        console.log(`Keranjang lama untuk guest_id ${guest_id} dihapus karena pindah kios`);
-      }
-    }
-
-    // ambil menu kios baru (hanya menu, tidak ada yang dihapus)
+    const kiosId = req.params.id;
     const result = await pool.query(
       'SELECT * FROM menu WHERE kios_id = $1 ORDER BY created_at DESC',
       [kiosId]
     );
-
-    res.json({
-      kios_id: kiosId,
-      guest_id,
-      menu: result.rows,
-      message: 'Menu kios berhasil diambil, keranjang lama sudah dicek'
-    });
+    res.json(result.rows);
   } catch (err) {
-    console.error('getMenusByKios error:', err);
     res.status(500).json({ error: err.message });
   }
 };
-
 
 //profile kios(penjual)
 const getKiosByPenjual = async (req, res) => {

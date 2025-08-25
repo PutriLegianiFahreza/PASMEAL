@@ -27,11 +27,14 @@ const addToKeranjang = async (req, res) => {
     );
 
     if (existingCart.rows.length > 0 && existingCart.rows[0].kios_id !== kios_id) {
-      // hapus semua item dari kios lama
-      await pool.query('DELETE FROM keranjang WHERE guest_id = $1', [guest_id]);
+      // ada item dari kios lain → beri peringatan, jangan tambahkan
+      return res.status(409).json({
+        message: 'Keranjang Anda masih ada dari kios lain. Hapus dulu untuk menambah menu dari kios ini',
+        existing_kios_id: existingCart.rows[0].kios_id
+      });
     }
 
-    // cek apakah item sudah ada
+    // cek apakah item sudah ada di keranjang
     const existing = await pool.query(
       'SELECT * FROM keranjang WHERE guest_id = $1 AND menu_id = $2',
       [guest_id, menu_id]
