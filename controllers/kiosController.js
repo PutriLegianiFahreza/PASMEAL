@@ -121,12 +121,30 @@ const getAllKios = async (req, res) => {
 const getMenusByKios = async (req, res) => {
   try {
     const kiosId = req.params.id;
+    const guest_id = getGuestId(req); // ambil guest_id
+
+    if (guest_id) {
+      // cek apakah ada item dari kios lain
+      const existing = await pool.query(
+        'SELECT DISTINCT kios_id FROM keranjang WHERE guest_id = $1',
+        [guest_id]
+      );
+
+      if (existing.rows.length > 0 && existing.rows[0].kios_id !== Number(kiosId)) {
+        // hapus keranjang lama otomatis
+        await pool.query('DELETE FROM keranjang WHERE guest_id = $1', [guest_id]);
+      }
+    }
+
+    // ambil menu kios baru
     const result = await pool.query(
       'SELECT * FROM menu WHERE kios_id = $1 ORDER BY created_at DESC',
       [kiosId]
     );
-    res.json(result.rows);
+
+    res.json({ menu: result.rows });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 };
