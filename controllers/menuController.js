@@ -82,61 +82,96 @@ const updateMenu = async (req, res) => {
     nama_menu,
     deskripsi,
     harga,
-    foto_menu,
     status_tersedia,
     kios_id,
     estimasi_menit,
-    foto_public_id
+    foto_public_id,
+    foto_menu
   } = req.body;
 
   try {
-    // ambil menu lama dulu
-    const result = await pool.query('SELECT * FROM menu WHERE id = $1 AND penjual_id = $2', [id, penjual_id]);
-    if (result.rows.length === 0) {
+    // 1) Ambil menu lama
+    const { rows } = await pool.query(
+      'SELECT * FROM menu WHERE id = $1 AND penjual_id = $2',
+      [id, penjual_id]
+    );
+    if (!rows.length) {
       return res.status(404).json({ message: 'Menu tidak ditemukan' });
     }
+    const oldMenu = rows[0];
 
-    const oldMenu = result.rows[0];
+    // Helper: treat empty string as "not provided"
+    const isProvided = (v) => v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '');
 
-    // kalau field gak dikirim, pakai value lama
-    const updatedMenu = {
-      nama_menu: nama_menu ?? oldMenu.nama_menu,
-      deskripsi: deskripsi ?? oldMenu.deskripsi,
-      harga: harga ?? oldMenu.harga,
-      foto_menu: foto_menu ?? oldMenu.foto_menu,
-      status_tersedia: status_tersedia ?? oldMenu.status_tersedia,
-      kios_id: kios_id ?? oldMenu.kios_id,
-      estimasi_menit: estimasi_menit ?? oldMenu.estimasi_menit,
-      foto_public_id: foto_public_id ?? oldMenu.foto_public_id
-    };
+    // 2) Tentukan nilai dasar (fallback ke lama jika tidak dikirim ATAU dikirim string kosong)
+    let nextNama = isProvided(nama_menu) ? nama_menu : oldMenu.nama_menu;
+    let nextDesk = isProvided(deskripsi) ? deskripsi : oldMenu.deskripsi;
+    let nextHarga = isProvided(harga) ? Number(harga) : oldMenu.harga;
+    let nextStatus = isProvided(status_tersedia) ? (typeof status_tersedia === 'boolean' ? status_tersedia : status_tersedia === 'true') : oldMenu.status_tersedia;
+    let nextKios = isProvided(kios_id) ? Number(kios_id) : oldMenu.kios_id;
+    let nextEstimasi = isProvided(estimasi_menit) ? Number(estimasi_menit) : oldMenu.estimasi_menit;
 
-    // update ke db
-    const updated = await pool.query(
+    // Nilai awal dari lama
+    let nextPublicId = oldMenu.foto_public_id || null;
+    let nextFotoUrl = oldMenu.foto_menu || null;
+
+    // a) Kalau pakai upload middleware (mis. Cloudinary Multer)
+    if (req.file) {
+      // Biasanya req.file punya secure_url & public_id
+      const filePublicId = req.file.public_id || req.file.filename || foto_public_id;
+      const fileUrl = req.file.secure_url || req.file.path || foto_menu;
+
+      if (filePublicId) nextPublicId = filePublicId;
+      if (fileUrl) nextFotoUrl = fileUrl;
+    } else {
+      // b) Hanya public_id yang dikirim
+      if (isProvided(foto_public_id)) {
+        nextPublicId = foto_public_id.trim();
+        nextFotoUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/${nextPublicId}`;
+      }
+
+      // c) Kalau URL dikirim eksplisit, pakai itu
+      if (isProvided(foto_menu)) {
+        nextFotoUrl = foto_menu.trim();
+      }
+    }
+    if (nextPublicId === oldMenu.foto_public_id && nextFotoUrl === oldMenu.foto_menu) {
+    }
+
+    // 5) Update DB
+    const { rows: updatedRows } = await pool.query(
       `UPDATE menu
-       SET nama_menu = $1, deskripsi = $2, harga = $3, foto_menu = $4, 
-           status_tersedia = $5, kios_id = $6, estimasi_menit = $7, foto_public_id = $8
+       SET nama_menu = $1,
+           deskripsi = $2,
+           harga = $3,
+           foto_menu = $4,
+           status_tersedia = $5,
+           kios_id = $6,
+           estimasi_menit = $7,
+           foto_public_id = $8
        WHERE id = $9 AND penjual_id = $10
        RETURNING *`,
       [
-        updatedMenu.nama_menu,
-        updatedMenu.deskripsi,
-        updatedMenu.harga,
-        updatedMenu.foto_menu,
-        updatedMenu.status_tersedia,
-        updatedMenu.kios_id,
-        updatedMenu.estimasi_menit,
-        updatedMenu.foto_public_id,
+        nextNama,
+        nextDesk,
+        nextHarga,
+        nextFotoUrl,
+        nextStatus,
+        nextKios,
+        nextEstimasi,
+        nextPublicId,
         id,
         penjual_id
       ]
     );
 
-    res.json({ message: 'Menu berhasil diperbarui', menu: updated.rows[0] });
+    return res.json({ message: 'Menu berhasil diperbarui', menu: updatedRows[0] });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Terjadi kesalahan server' });
+    console.error('updateMenu error:', err);
+    return res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
+
 
 // Ambil detail menu (penjual)
 const getMenuById = async (req, res) => {
