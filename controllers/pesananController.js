@@ -156,24 +156,17 @@ const buatPesanan = async (req, res) => {
        ORDER BY paid_at ASC`, [kios_id]
     );
 
-    let waktuMulai = Date.now();
-    if (antreanRes.rows.length) {
-      const lastPesanan = antreanRes.rows[antreanRes.rows.length-1];
-      const lastSelesai = lastPesanan.estimasi_selesai_at ? new Date(lastPesanan.estimasi_selesai_at).getTime() : waktuMulai + (lastPesanan.total_estimasi||0)*60000;
-      waktuMulai = Math.max(waktuMulai, lastSelesai);
-    }
-
-    const estimasi_mulai_at = new Date(waktuMulai);
-    const estimasi_selesai_at = new Date(waktuMulai + total_estimasi*60000);
-
     const pesananRes = await client.query(
-      `INSERT INTO pesanan
-       (guest_id,kios_id,tipe_pengantaran,nama_pemesan,no_hp,catatan,diantar_ke,
-        total_harga,total_estimasi,estimasi_mulai_at,estimasi_selesai_at,status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending') RETURNING *`,
-      [guest_id,kios_id,tipe_pengantaran,nama_pemesan,no_hp,catatan,diantar_ke||null,
-       total_harga,total_estimasi,estimasi_mulai_at,estimasi_selesai_at]
-    );
+  `INSERT INTO pesanan (
+  guest_id, kios_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke,
+  total_harga, total_estimasi, status, estimasi_mulai_at, estimasi_selesai_at, waktu_proses_mulai
+)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending', NULL, NULL, NULL)
+RETURNING *`,
+  [guest_id, kios_id, tipe_pengantaran, nama_pemesan, no_hp, catatan, diantar_ke || null,
+   total_harga, total_estimasi]
+);
+
     const pesanan = pesananRes.rows[0];
 
     for (const item of items) {
@@ -190,9 +183,9 @@ const buatPesanan = async (req, res) => {
     await notifyPenjual(kios_id, pesanan.id);
 
     res.status(201).json({
-      message: 'Pesanan berhasil dibuat',
-      pesanan: { ...pesanan, estimasi_mulai_at: estimasi_mulai_at.toISOString(), estimasi_selesai_at: estimasi_selesai_at.toISOString() }
-    });
+  message: 'Pesanan berhasil dibuat',
+  pesanan
+});
 
   } catch (err) {
     await client.query('ROLLBACK');
@@ -233,13 +226,13 @@ const getStatusPesananGuest = async (req, res) => {
 
     // 2. Ambil antrean pesanan aktif di kios
     const antreanRes = await pool.query(
-      `SELECT id, paid_at, total_estimasi, status, estimasi_mulai_at
-       FROM pesanan
-       WHERE kios_id = $1
-         AND status IN ('paid', 'processing', 'ready', 'delivering')
-       ORDER BY paid_at ASC`,
-      [kios_id]
-    );
+  `SELECT id, paid_at, total_estimasi, status, estimasi_mulai_at, waktu_proses_mulai
+   FROM pesanan
+   WHERE kios_id = $1
+     AND status IN ('paid', 'processing', 'ready', 'delivering')
+   ORDER BY paid_at ASC`,
+  [kios_id]
+);
 
     if (antreanRes.rows.length === 0) {
       return res.status(404).json({ message: "Tidak ada antrean aktif" });
@@ -249,27 +242,26 @@ const getStatusPesananGuest = async (req, res) => {
     let targetPesanan = null;
 
     antreanRes.rows.forEach((p) => {
-      const mulai =
-        p.status === "processing"
-          ? Date.now()
-          : Math.max(
-              waktuSelesaiSebelumnya,
-              new Date(p.estimasi_mulai_at || p.paid_at).getTime()
-            );
+  const mulai =
+    p.status === "processing"
+      ? (p.waktu_proses_mulai ? new Date(p.waktu_proses_mulai).getTime() : Date.now())
+      : Math.max(
+          waktuSelesaiSebelumnya,
+          new Date(p.waktu_proses_mulai || p.estimasi_mulai_at || p.paid_at).getTime()
+        );
 
-      const durasi = Number(p.total_estimasi || 0) * 60000; // menit → ms
-      const selesai = mulai + durasi;
+  const durasi = Number(p.total_estimasi || 0) * 60000; // menit → ms
+  const selesai = mulai + durasi;
 
-      waktuSelesaiSebelumnya = selesai;
+  waktuSelesaiSebelumnya = selesai;
 
-      if (p.id == id) {
-        targetPesanan = {
-          ...p,
-          estimasi_selesai_at: new Date(selesai).toISOString(),
-        };
-      }
-    });
-
+  if (p.id == id) {
+    targetPesanan = {
+      ...p,
+      estimasi_selesai_at: new Date(selesai).toISOString(),
+    };
+  }
+});
     if (!targetPesanan) {
       // Kalau pesanan nggak ketemu di antrean aktif
       return res.json({ status, estimasi_selesai_at: null });
@@ -450,7 +442,7 @@ const getDetailPesananMasuk = async (req, res) => {
     const pesananAntreanRes = await pool.query(
       `SELECT p.id, p.paid_at, p.total_estimasi, p.status, p.tipe_pengantaran, 
               p.nama_pemesan, p.no_hp, p.payment_type, p.diantar_ke, 
-              p.catatan, p.total_harga, p.kios_id
+              p.catatan, p.total_harga, p.kios_id, p.waktu_proses_mulai
        FROM pesanan p
        WHERE p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
          AND p.status IN ('paid', 'processing', 'ready', 'delivering')
@@ -464,13 +456,16 @@ const getDetailPesananMasuk = async (req, res) => {
 
     let waktuSelesaiSebelumnya = null;
     const antreanDenganJadwal = pesananAntreanRes.rows.map((pesanan, index) => {
-      const waktuMulaiMillis = (index === 0)
-        ? new Date(pesanan.paid_at).getTime()
-        : waktuSelesaiSebelumnya;
+      // kalau sudah processing → pakai waktu_proses_mulai
+      // kalau belum → pakai waktu selesai sebelumnya (biar nyambung antrean)
+      const waktuMulaiMillis = pesanan.waktu_proses_mulai
+        ? new Date(pesanan.waktu_proses_mulai).getTime()
+        : (waktuSelesaiSebelumnya || new Date(pesanan.paid_at).getTime());
 
       const durasiMillis = (pesanan.total_estimasi || 0) * 60 * 1000;
       const waktuSelesaiMillis = waktuMulaiMillis + durasiMillis;
 
+      // update buat antrean berikutnya
       waktuSelesaiSebelumnya = waktuSelesaiMillis;
 
       return {
@@ -497,8 +492,8 @@ const getDetailPesananMasuk = async (req, res) => {
     const menu = detailMenuRes.rows.map(item => ({
       ...item,
       foto_menu: item.foto_menu
-    ? `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/${item.foto_menu}`
-    : null
+        ? `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/${item.foto_menu}`
+        : null
     }));
 
     const data = {
@@ -515,7 +510,7 @@ const getDetailPesananMasuk = async (req, res) => {
       total_harga: Number(p.total_harga),
       total_estimasi: Number(p.total_estimasi),
       status: p.status,
-      menu, // langsung pakai Cloudinary
+      menu,
       estimasi_mulai_at: p.estimasi_mulai_at,
       estimasi_selesai_at: p.estimasi_selesai_at,
     };
@@ -555,27 +550,68 @@ const updateStatusPesanan = async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
-      `UPDATE pesanan SET status = $1 
-       WHERE id = $2 
-       AND kios_id IN (SELECT id FROM kios WHERE penjual_id = $3)
-       RETURNING *`,
-       [status, id, penjualId] 
-    );
+    let query, values;
+
+    if (status === 'processing') {
+      // Ambil pesanan dulu biar dapat estimasi
+      const pesananRes = await pool.query(
+        `SELECT p.*, k.penjual_id 
+         FROM pesanan p
+         JOIN kios k ON p.kios_id = k.id
+         WHERE p.id = $1 AND k.penjual_id = $2`,
+        [id, penjualId]
+      );
+
+      if (pesananRes.rows.length === 0) {
+        return res.status(404).json({ message: 'Pesanan tidak ditemukan atau Anda tidak memiliki akses' });
+      }
+
+      const totalEstimasi = pesananRes.rows[0].total_estimasi || 0;
+
+      // Update status + set waktu mulai & selesai + reset delayed
+      query = `
+  UPDATE pesanan
+  SET status = $1,
+      estimasi_mulai_at = NOW(),
+      estimasi_selesai_at = NOW() + ($2 || ' minutes')::interval,
+      waktu_proses_mulai = NOW(),   -- ✅ tambahin ini
+      delayed = false
+  WHERE id = $3
+    AND kios_id IN (SELECT id FROM kios WHERE penjual_id = $4)
+  RETURNING *`;
+      values = [status, totalEstimasi, id, penjualId];
+
+    } else {
+      // Update biasa kalau bukan processing
+      query = `
+        UPDATE pesanan
+        SET status = $1
+        WHERE id = $2
+          AND kios_id IN (SELECT id FROM kios WHERE penjual_id = $3)
+        RETURNING *`;
+      values = [status, id, penjualId];
+    }
+
+    const result = await pool.query(query, values);
+
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Pesanan tidak ditemukan atau Anda tidak memiliki akses' });
     }
+
     const pesanan = result.rows[0];
 
     if (status === 'done') {
-      await notifyPembeliPesananSelesai(pesanan.id);
-    }
+  notifyPembeliPesananSelesai(pesanan.id).catch(err =>
+    console.error('Gagal kirim notifikasi pembeli:', err)
+  );
+}
     res.json({ message: 'Status berhasil diperbarui', pesanan });
   } catch (err) {
     console.error('updateStatusPesanan error:', err);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
+
 
 // Mengambil riwayat pesanan
 const getRiwayatPesanan = async (req, res) => {
