@@ -338,13 +338,23 @@ const getDetailPesanan = async (req, res) => {
       [id]
     );
 
-    // Pakai Cloudinary langsung
-    pesanan.items = detailsRes.rows.map(item => ({
-      ...item,
-      foto_menu: item.foto_menu
-    ? `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/${item.foto_menu}`
-    : null
-    }));
+    // GANTI DENGAN KODE INI
+pesanan.items = detailsRes.rows.map(item => {
+  let imageUrl = null;
+  if (item.foto_menu) {
+    // Cek apakah sudah menjadi URL lengkap atau masih path saja
+    if (item.foto_menu.startsWith('http')) {
+      imageUrl = item.foto_menu; // Langsung gunakan jika sudah URL
+    } else {
+      // Jika masih path, baru kita bangun URL-nya
+      imageUrl = `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/${item.foto_menu}`;
+    }
+  }
+  return {
+    ...item,
+    foto_menu: imageUrl // Gunakan hasil yang sudah diproses
+  };
+});
 
     // --- LOGIKA BARU: Ambil antrean di depan pesanan ini ---
     let antrean = [];
