@@ -7,7 +7,10 @@ const getAllMenu = async (req, res) => {
   const penjualId = req.user.id;
   try {
     const result = await pool.query(
-      'SELECT * FROM menu WHERE penjual_id = $1 ORDER BY created_at DESC',
+      `SELECT id, nama_menu, harga, deskripsi, foto_menu, status_tersedia, estimasi_menit, created_at
+       FROM menu 
+       WHERE penjual_id = $1 
+       ORDER BY created_at DESC`,
       [penjualId]
     );
     res.status(200).json(result.rows);
@@ -72,14 +75,15 @@ const addMenu = async (req, res) => {
 };
 
 // Update menu
+// Update menu
 const updateMenu = async (req, res) => {
   const { id } = req.params;
-  const { nama_menu, harga, deskripsi } = req.body;
+  let { nama_menu, harga, deskripsi, status_tersedia, estimasi_menit } = req.body;
 
   try {
-    // Pastikan menu milik penjual yang login
+    // Ambil data lama
     const existing = await pool.query(
-      "SELECT foto_public_id FROM menu WHERE id = $1 AND penjual_id = $2",
+      "SELECT * FROM menu WHERE id = $1 AND penjual_id = $2",
       [id, req.user.id]
     );
 
@@ -87,8 +91,9 @@ const updateMenu = async (req, res) => {
       return res.status(404).json({ message: "Menu tidak ditemukan atau bukan milik Anda" });
     }
 
-    let foto_menu = null;
-    let foto_public_id = existing.rows[0].foto_public_id;
+    const oldMenu = existing.rows[0];
+    let foto_menu = oldMenu.foto_menu;
+    let foto_public_id = oldMenu.foto_public_id;
 
     if (req.file) {
       // Kalau ada foto baru, hapus yang lama
@@ -98,7 +103,7 @@ const updateMenu = async (req, res) => {
 
       // Upload yang baru
       const uploadResult = await cloudinary.uploader.upload(req.file.path, {
-        folder: "menu",
+        folder: "menus",
       });
 
       foto_menu = uploadResult.secure_url;
@@ -108,14 +113,29 @@ const updateMenu = async (req, res) => {
       fs.unlinkSync(req.file.path);
     }
 
+    // Gunakan nilai baru kalau ada, kalau tidak pakai nilai lama
     const result = await pool.query(
       `UPDATE menu 
-       SET nama_menu = $1, harga = $2, deskripsi = $3, 
-           foto_menu = COALESCE($4, foto_menu), 
-           foto_public_id = COALESCE($5, foto_public_id)
-       WHERE id = $6 AND penjual_id = $7
+       SET nama_menu = $1, 
+           harga = $2, 
+           deskripsi = $3, 
+           status_tersedia = $4,
+           estimasi_menit = $5,
+           foto_menu = $6, 
+           foto_public_id = $7
+       WHERE id = $8 AND penjual_id = $9
        RETURNING *`,
-      [nama_menu, harga, deskripsi, foto_menu, foto_public_id, id, req.user.id]
+      [
+        nama_menu ?? oldMenu.nama_menu,
+        harga ?? oldMenu.harga,
+        deskripsi ?? oldMenu.deskripsi,
+        status_tersedia ?? oldMenu.status_tersedia,
+        estimasi_menit ?? oldMenu.estimasi_menit,
+        foto_menu,
+        foto_public_id,
+        id,
+        req.user.id,
+      ]
     );
 
     res.json({ message: "Menu berhasil diperbarui", menu: result.rows[0] });
@@ -180,7 +200,11 @@ const getMenusPaginated = async (req, res) => {
     const total = parseInt(totalResult.rows[0].count);
 
     const result = await pool.query(
-      'SELECT * FROM menu WHERE penjual_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+      `SELECT id, nama_menu, harga, deskripsi, foto_menu, status_tersedia, estimasi_menit, created_at
+       FROM menu 
+       WHERE penjual_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT $2 OFFSET $3`,
       [penjualId, limit, offset]
     );
 
@@ -193,7 +217,9 @@ const getMenusPaginated = async (req, res) => {
 // Ambil 5 menu terbaru (pembeli)
 const getNewMenus = async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM menu WHERE status_tersedia = true ORDER BY created_at DESC LIMIT 5');
+    const result = await pool.query(
+      'SELECT id, foto_menu, nama_menu, deskripsi, harga, estimasi_menit, status_tersedia FROM menu ORDER BY created_at DESC LIMIT 5'
+    );
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -206,7 +232,10 @@ const searchMenus = async (req, res) => {
   if (!query) return res.status(400).json({ message: 'Query pencarian wajib diisi' });
 
   try {
-    const result = await pool.query('SELECT * FROM menu WHERE nama_menu ILIKE $1 AND status_tersedia = true', [`%${query}%`]);
+    const result = await pool.query(
+      'SELECT id, foto_menu, nama_menu, deskripsi, harga, estimasi_menit, status_tersedia FROM menu WHERE nama_menu ILIKE $1',
+      [`%${query}%`]
+    );
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -222,7 +251,7 @@ const searchMenusByKios = async (req, res) => {
 
   try {
     const result = await pool.query(
-      'SELECT * FROM menu WHERE kios_id = $1 AND nama_menu ILIKE $2 AND status_tersedia = true',
+      'SELECT id, foto_menu, nama_menu, deskripsi, harga, estimasi_menit, status_tersedia FROM menu WHERE kios_id = $1 AND nama_menu ILIKE $2',
       [kiosId, `%${query}%`]
     );
     res.json(result.rows);
@@ -238,7 +267,7 @@ const getMenuByIdForBuyer = async (req, res) => {
 
   try {
     const result = await pool.query(
-      'SELECT foto_menu, nama_menu, deskripsi, harga, estimasi_menit FROM menu WHERE id = $1 AND status_tersedia = true',
+      'SELECT id, foto_menu, nama_menu, deskripsi, harga, estimasi_menit, status_tersedia FROM menu WHERE id = $1',
       [menuId]
     );
     if (result.rowCount === 0) return res.status(404).json({ message: 'Menu tidak ditemukan' });
@@ -248,6 +277,8 @@ const getMenuByIdForBuyer = async (req, res) => {
     res.status(500).json({ message: 'Gagal mengambil detail menu', error: error.message });
   }
 };
+
+
 
 module.exports = {
   getAllMenu,
