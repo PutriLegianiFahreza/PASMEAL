@@ -444,9 +444,10 @@ const getPesananMasuk = async (req, res) => {
 // Mengambil detail pesanan masuk
 const getDetailPesananMasuk = async (req, res) => {
   try {
+    // Ambil semua pesanan aktif untuk kios penjual
     const pesananAntreanRes = await pool.query(
-      `SELECT p.id, p.paid_at, p.total_estimasi, p.status, p.tipe_pengantaran, 
-              p.nama_pemesan, p.no_hp, p.payment_type, p.diantar_ke, 
+      `SELECT p.id, p.paid_at, p.total_estimasi, p.status, p.tipe_pengantaran,
+              p.nama_pemesan, p.no_hp, p.payment_type, p.diantar_ke,
               p.catatan, p.total_harga, p.kios_id, p.waktu_proses_mulai
        FROM pesanan p
        WHERE p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
@@ -460,25 +461,29 @@ const getDetailPesananMasuk = async (req, res) => {
     }
 
     let waktuSelesaiSebelumnya = null;
-    const antreanDenganJadwal = pesananAntreanRes.rows.map((pesanan, index) => {
-      let estimasiMulaiMillis = null;
-      let estimasiSelesaiMillis = null;
 
-      if (pesanan.waktu_proses_mulai) {
-        // Hanya pesanan yang sedang diproses → hitung estimasi
-        estimasiMulaiMillis = new Date(pesanan.waktu_proses_mulai).getTime();
-        estimasiSelesaiMillis = estimasiMulaiMillis + (Number(pesanan.total_estimasi || 0) * 60 * 1000);
-        waktuSelesaiSebelumnya = estimasiSelesaiMillis; // update untuk pesanan berikutnya
-      }
+    const antreanDenganJadwal = pesananAntreanRes.rows.map((pesanan, index) => {
+      // Hitung estimasi mulai
+      const waktuMulaiMillis = pesanan.waktu_proses_mulai
+        ? new Date(pesanan.waktu_proses_mulai).getTime()
+        : (waktuSelesaiSebelumnya || new Date(pesanan.paid_at).getTime());
+
+      // Hitung estimasi selesai
+      const durasiMillis = Number(pesanan.total_estimasi || 0) * 60 * 1000;
+      const waktuSelesaiMillis = waktuMulaiMillis + durasiMillis;
+
+      // Update waktuSelesaiSebelumnya untuk antrean berikutnya
+      waktuSelesaiSebelumnya = waktuSelesaiMillis;
 
       return {
         ...pesanan,
         nomor_antrian: index + 1,
-        estimasi_mulai_at: estimasiMulaiMillis ? new Date(estimasiMulaiMillis).toISOString() : null,
-        estimasi_selesai_at: estimasiSelesaiMillis ? new Date(estimasiSelesaiMillis).toISOString() : null,
+        estimasi_mulai_at: new Date(waktuMulaiMillis).toISOString(),
+        estimasi_selesai_at: new Date(waktuSelesaiMillis).toISOString(),
       };
     });
 
+    // Cari pesanan spesifik berdasarkan ID
     const p = antreanDenganJadwal.find(row => row.id == req.params.id);
     if (!p) {
       return res.status(404).json({ message: "Pesanan tidak ditemukan dalam antrean aktif" });
@@ -486,8 +491,8 @@ const getDetailPesananMasuk = async (req, res) => {
 
     // Ambil detail menu
     const detailMenuRes = await pool.query(
-      `SELECT pd.nama_menu, pd.jumlah, pd.harga, pd.foto_menu 
-       FROM pesanan_detail pd 
+      `SELECT pd.nama_menu, pd.jumlah, pd.harga, pd.foto_menu
+       FROM pesanan_detail pd
        WHERE pd.pesanan_id = $1`,
       [req.params.id]
     );
@@ -519,12 +524,12 @@ const getDetailPesananMasuk = async (req, res) => {
     };
 
     res.status(200).json(data);
+
   } catch (err) {
     console.error('getDetailPesananMasuk error:', err);
     res.status(500).json({ message: "Gagal mengambil detail pesanan" });
   }
 };
-
 
 // Menghitung jumlah pesanan masuk untuk badge notifikasi
 const countPesananMasuk = async (req, res) => {
