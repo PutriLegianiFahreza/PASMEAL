@@ -169,12 +169,13 @@ RETURNING *`,
 
     await client.query('DELETE FROM keranjang WHERE guest_id=$1', [guest_id]);
     await client.query('COMMIT');
-    
-    res.status(201).json({
-      message: 'Pesanan berhasil dibuat',
-      pesanan
-    });
 
+    await notifyPenjual(kios_id, pesanan.id);
+
+    res.status(201).json({
+  message: 'Pesanan berhasil dibuat',
+  pesanan
+});
 
   } catch (err) {
     await client.query('ROLLBACK');
