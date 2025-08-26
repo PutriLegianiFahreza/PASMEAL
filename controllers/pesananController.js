@@ -35,28 +35,44 @@ function getStatusLabel(tipe_pengantaran, statusDb) {
 // Notifikasi ke penjual dengan token sementara
 const notifyPenjual = async (kiosId, pesananId) => {
   try {
+    // cek dulu apakah sudah pernah dikirim
+    const cekLog = await pool.query(
+      'SELECT 1 FROM wa_notif_logs WHERE pesanan_id = $1 LIMIT 1',
+      [pesananId]
+    );
+    if (cekLog.rows.length) {
+      console.log(`Notif pesanan ${pesananId} sudah pernah dikirim, skip.`);
+      return;
+    }
+
     // ambil penjual
     const kiosData = await pool.query(
       'SELECT penjual_id FROM kios WHERE id = $1',
       [kiosId]
     );
-    if (kiosData.rows.length === 0) return;
+    if (!kiosData.rows.length) return;
     const penjualId = kiosData.rows[0].penjual_id;
 
     const penjualData = await pool.query(
       'SELECT no_hp FROM penjual WHERE id = $1',
       [penjualId]
     );
-    if (penjualData.rows.length === 0) return;
+    if (!penjualData.rows.length) return;
     const noHpPenjual = penjualData.rows[0].no_hp;
 
-    // link ke dashboard (tanpa token)
+    // link ke dashboard
     const linkDashboard = `https://pas-meal.vercel.app/`;
     const message = `📢 Pesanan Baru! Silakan klik link ini untuk melihat pesanan: ${linkDashboard}`;
 
     // kirim WA
     await sendWaMessage(noHpPenjual, message);
-    console.log(`WA notifikasi pesanan ke penjual (${noHpPenjual}) terkirim.`);
+    console.log(`WA notifikasi pesanan ${pesananId} ke penjual (${noHpPenjual}) terkirim.`);
+
+    // simpan log bahwa notif sudah terkirim
+    await pool.query(
+      'INSERT INTO wa_notif_logs (pesanan_id) VALUES ($1)',
+      [pesananId]
+    );
 
   } catch (err) {
     console.error('Gagal kirim WA ke penjual:', err);
