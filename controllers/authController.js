@@ -13,6 +13,11 @@ const register = async (req, res) => {
     return res.status(400).json({ message: 'Konfirmasi password tidak cocok' });
   }
 
+  // Validasi panjang password minimal 8 karakter
+  if (password.length < 8) {
+    return res.status(400).json({ message: 'Password minimal 8 karakter' });
+  }
+
   try {
     const cek = await pool.query('SELECT * FROM penjual WHERE no_hp = $1', [no_hp]);
     if (cek.rows.length > 0) {
@@ -27,7 +32,6 @@ const register = async (req, res) => {
       RETURNING id, no_hp
     `, [nama, email, no_hp, hashedPassword]);
 
-    // Generate token JWT (meskipun is_verified = false)
     const jwt = require('jsonwebtoken');
     const token = jwt.sign(
       {
@@ -216,11 +220,11 @@ const forgotPassword = async (req, res) => {
     // link reset password
     const resetLink = `https://pas-meal.vercel.app/NewPassPage?token=${token}`;
 
-    const message = `🔐 Permintaan reset password diterima.\n\nKlik link berikut untuk mengganti password kamu:\n${resetLink}\n\nLink ini berlaku selama 15 menit.`;
+    const message = `🔐 Permintaan reset password diterima.\n\nKlik tautan berikut untuk mengganti password kamu:\n${resetLink}\n\ntautan ini berlaku selama 15 menit.`;
     await sendWhatsApp(no_hp, message);
 
-    console.log(`✅ Link reset password terkirim ke ${no_hp}`);
-    res.status(200).json({ message: 'Link reset password telah dikirim ke WhatsApp Anda.' });
+    console.log(`Tautan reset password terkirim ke ${no_hp}`);
+    res.status(200).json({ message: 'Tautan reset password telah dikirim ke WhatsApp Anda.' });
 
   } catch (error) {
     console.error(' Gagal memproses lupa password:', error);

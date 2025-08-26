@@ -62,7 +62,7 @@ const notifyPenjual = async (kiosId, pesananId) => {
 
     // link ke dashboard
     const linkDashboard = `https://pas-meal.vercel.app/`;
-    const message = `📢 Pesanan Baru! Silakan klik link ini untuk melihat pesanan: ${linkDashboard}`;
+    const message = `📢 Pesanan Baru! Silakan klik tautan ini untuk melihat pesanan: ${linkDashboard}`;
 
     // kirim WA
     await sendWaMessage(noHpPenjual, message);
