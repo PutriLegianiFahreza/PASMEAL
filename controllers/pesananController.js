@@ -1,5 +1,4 @@
 const pool = require('../config/db');
-const crypto = require('crypto');
 const getGuestId = require('../utils/getGuestId');
 const { sendWhatsApp: sendWaMessage } = require('../utils/wa');
 
@@ -51,44 +50,19 @@ const notifyPenjual = async (kiosId, pesananId) => {
     if (penjualData.rows.length === 0) return;
     const noHpPenjual = penjualData.rows[0].no_hp;
 
-    // cek apakah notifikasi untuk pesanan ini sudah ada
-    let tokenData = await pool.query(
-      'SELECT * FROM auto_login_tokens WHERE pesanan_id = $1',
-      [pesananId]
-    );
+    // link ke dashboard (tanpa token)
+    const linkDashboard = `https://pas-meal.vercel.app/`;
+    const message = `📢 Pesanan Baru! Silakan klik link ini untuk melihat pesanan: ${linkDashboard}`;
 
-    let token;
-    if (tokenData.rows.length === 0) {
-      // buat token baru jika belum ada
-      token = crypto.randomBytes(16).toString('hex');
-      await pool.query(
-        `INSERT INTO auto_login_tokens (penjual_id, pesanan_id, token, expired_at, is_used)
-         VALUES ($1, $2, $3, NOW() + INTERVAL '10 minutes', FALSE)`,
-        [penjualId, pesananId, token]
-      );
-    } else {
-      token = tokenData.rows[0].token;
-      if (tokenData.rows[0].is_used) {
-       console.log(`Notifikasi untuk pesanan ${pesananId} sudah terkirim sebelumnya.`);
-        return; // WA sudah dikirim, jangan kirim lagi
-      }
-    }
-    const linkDashboard = `https://pas-meal.vercel.app/OrderPage?token=${token}`;
-    const message = `📢 Pesanan Baru!\nID Pesanan: ${pesananId}\nKlik untuk lihat dan kelola: ${linkDashboard}`;
     // kirim WA
     await sendWaMessage(noHpPenjual, message);
     console.log(`WA notifikasi pesanan ke penjual (${noHpPenjual}) terkirim.`);
-
-    // tandai token sebagai sudah dipakai
-    await pool.query(
-      'UPDATE auto_login_tokens SET is_used = TRUE WHERE pesanan_id = $1',
-      [pesananId]
-    );
 
   } catch (err) {
     console.error('Gagal kirim WA ke penjual:', err);
   }
 };
+
 
 // Notifikasi ke pembeli setelah pesanan selesai
 const notifyPembeliPesananSelesai = async (pesananId) => {

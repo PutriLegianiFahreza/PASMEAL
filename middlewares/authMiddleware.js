@@ -68,30 +68,8 @@ const verifiedMiddleware = async (req, res, next) => {
   }
 };
 
-// Middleware khusus pesanan_only
-const pesananOnlyMiddleware = async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer '))
-    return res.status(401).json({ message: 'Token tidak ditemukan' });
-
-  const token = authHeader.split(' ')[1];
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    if (decoded.access !== 'pesanan_only')
-      return res.status(403).json({ message: 'Token tidak punya akses ini' });
-
-    req.user = await attachKiosId(normalizeUser(decoded));
-    next();
-  } catch (err) {
-    console.error('pesananOnlyMiddleware error:', err);
-    return res.status(403).json({ message: 'Token tidak valid atau kadaluarsa' });
-  }
-};
 
 module.exports = {
   authMiddleware,
   verifiedMiddleware,
-  pesananOnlyMiddleware
 };

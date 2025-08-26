@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pesananController = require('../controllers/pesananController');
-const { verifiedMiddleware, pesananOnlyMiddleware } = require('../middlewares/authMiddleware');
+const { verifiedMiddleware } = require('../middlewares/authMiddleware');
 
 // Buat pesanan dari keranjang (pembeli)
 router.post('/pesanan', pesananController.buatPesanan);
@@ -17,9 +17,6 @@ router.get('/pesanan/riwayat/:id', verifiedMiddleware, pesananController.getDeta
 
 // Endpoint untuk penjual biasa (login & verified)
 router.get('/pesanan-masuk', verifiedMiddleware, pesananController.getPesananMasuk);
-
-// Endpoint untuk auto-login via WA (akses terbatas)
-router.get('/pesanan-masuk-wa', pesananOnlyMiddleware, pesananController.getPesananMasuk);
 
 // ✅ Hitung jumlah pesanan masuk (penjual) → buat badge
 router.get('/pesanan-masuk/count', verifiedMiddleware, pesananController.countPesananMasuk);
