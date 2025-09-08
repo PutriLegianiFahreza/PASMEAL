@@ -182,8 +182,7 @@ async function buatPesananService(req) {
   }
 }
 
-// --- Status pesanan untuk guest (logic versi lama, style service baru) ---
-// --- Status pesanan untuk guest (selaras dengan penjual: detik + server_time + override status) ---
+// --- Status pesanan untuk guest (selaras penjual: detik + server_time + override status) ---
 async function getStatusPesananGuestService(req) {
   const pesananId = parseInt(req.params.id, 10);
   const guest_id = getGuestId(req);
@@ -201,7 +200,7 @@ async function getStatusPesananGuestService(req) {
   if (!tRes.rows.length) throw httpErr(404, 'Pesanan tidak ditemukan');
   const t = tRes.rows[0];
 
-  // antrean aktif di kios (yang berkontribusi pada ETA)
+  // antrean aktif di kios
   const qRes = await pool.query(
     `SELECT id,
             COALESCE(waktu_proses_mulai, paid_at, created_at) AS anchor_time,
@@ -214,7 +213,7 @@ async function getStatusPesananGuestService(req) {
     [t.kios_id]
   );
 
-  // selipkan target kalau belum ada (mis. pending)
+  // selipkan target jika belum ada (mis. pending)
   let list = qRes.rows;
   if (!list.some(r => r.id === pesananId)) {
     list = list.concat([{
@@ -240,33 +239,30 @@ async function getStatusPesananGuestService(req) {
     };
   }
 
-  // Kalkulasi serial (start tidak boleh lebih awal dari finish sebelumnya)
+  // Kalkulasi serial
   let prevFinishMs = null;
   let etaMs = null;
-  let startMsForTarget = null;
-
   for (const row of list) {
     const anchorMs = row.anchor_time ? new Date(row.anchor_time).getTime() : Date.now();
     const baseStart = row.waktu_proses_mulai ? new Date(row.waktu_proses_mulai).getTime() : anchorMs;
-    const startMs   = Math.max(prevFinishMs ?? baseStart, baseStart);
+    const startMs   = Math.max(prevFinishMs ?? baseStart, baseStart); // serial guard
 
     const durMs     = Math.max(0, Number(row.total_estimasi) || 0) * 60 * 1000;
     const finishMs  = startMs + durMs;
 
     if (row.id === pesananId) {
-      startMsForTarget = startMs;
       etaMs = finishMs;
       break;
     }
     prevFinishMs = finishMs;
   }
 
-  const now = Date.now();
+  const nowMs = Date.now();
   const estimasi_selesai_at = etaMs ? new Date(etaMs).toISOString() : null;
-  const remaining_seconds   = etaMs ? Math.max(0, Math.floor((etaMs - now) / 1000)) : 0;
+  const remaining_seconds   = etaMs ? Math.max(0, Math.floor((etaMs - nowMs) / 1000)) : 0;
   const remaining_minutes   = Math.ceil(remaining_seconds / 60);
 
-  // ⬇️ Override status FE bila ETA ada & masih paid/pending agar timer tampil di FE lama
+  // Override status FE bila ETA ada & masih paid/pending agar timer tampil di FE lama
   let statusForFE = t.status;
   if ((t.status === 'paid' || t.status === 'pending') && estimasi_selesai_at && remaining_seconds > 0) {
     statusForFE = 'processing';
@@ -275,16 +271,16 @@ async function getStatusPesananGuestService(req) {
   return {
     status: 200,
     body: {
-      status: statusForFE,             // FE lama akan masuk cabang "processing"
-      estimasi_selesai_at,             // ISO
-      remaining_seconds,               // detik (selaras dengan penjual)
-      remaining_minutes,               // opsional: buat display cepat
+      status: statusForFE,          // FE kamu akan masuk cabang "processing"
+      estimasi_selesai_at,          // ISO
+      remaining_seconds,            // detik (selaras penjual)
+      remaining_minutes,            // opsional
       server_time: new Date().toISOString(),
-      eta_at: estimasi_selesai_at,     // alias kompat lama
-      // estimasi_mulai_at: startMsForTarget ? new Date(startMsForTarget).toISOString() : null, // opsional jika mau dipakai
+      eta_at: estimasi_selesai_at   // alias kompat lama
     }
   };
 }
+
 
 // --- Daftar pesanan by guest ---
 async function getPesananByGuestService(req) {
