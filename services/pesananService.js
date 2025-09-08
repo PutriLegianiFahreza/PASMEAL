@@ -363,49 +363,48 @@ async function getPesananMasukService(req) {
   // Hitung kumulatif per-kios langsung di SQL
   const rows = (await pool.query(
     `
-    WITH aktif AS (
-      SELECT
-        p.*,
-        COALESCE(p.waktu_proses_mulai, p.paid_at, p.created_at) AS anchor_time
-      FROM pesanan p
-      WHERE p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
-        AND LOWER(p.status) IN ('paid','processing','ready','delivering')
-    ),
-    urut AS (
-      SELECT
-        a.*,
-        ROW_NUMBER() OVER (
-          PARTITION BY a.kios_id
-          ORDER BY a.anchor_time ASC, a.id ASC
-        ) AS nomor_antrian_kios,
+   WITH aktif AS (
+  SELECT
+    p.*,
+    COALESCE(p.waktu_proses_mulai, p.paid_at, p.created_at) AS anchor_time
+  FROM pesanan p
+  WHERE p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
+    AND LOWER(p.status) IN ('paid','processing','ready','delivering')
+),
+urut AS (
+  SELECT
+    a.*,
+    ROW_NUMBER() OVER (
+      PARTITION BY a.kios_id
+      ORDER BY a.anchor_time ASC, a.id ASC
+    ) AS nomor_antrian_kios,
 
-        -- kumulasi menit per kios (5 -> 10 -> 15)
-        SUM(COALESCE(a.total_estimasi,0)) OVER (
-          PARTITION BY a.kios_id
-          ORDER BY a.anchor_time ASC, a.id ASC
-          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-        ) AS cum_estimasi_menit
-      FROM aktif a
-    )
-    SELECT
-      u.id, u.kios_id, u.nama_pemesan, u.no_hp, u.total_harga, u.status,
-      u.payment_type, u.tipe_pengantaran, u.diantar_ke,
-      u.paid_at, u.created_at, COALESCE(u.total_estimasi,0) AS total_estimasi,
-      u.waktu_proses_mulai,
-      u.anchor_time,
-      u.nomor_antrian_kios,
+    -- kumulasi total_estimasi (menit) per kios
+    SUM(COALESCE(a.total_estimasi,0)) OVER (
+      PARTITION BY a.kios_id
+      ORDER BY a.anchor_time ASC, a.id ASC
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS cum_estimasi_menit
+  FROM aktif a
+)
+SELECT
+  u.id, u.kios_id, u.nama_pemesan, u.no_hp, u.total_harga, u.status,
+  u.payment_type, u.tipe_pengantaran, u.diantar_ke,
+  u.paid_at, u.created_at, COALESCE(u.total_estimasi,0) AS total_estimasi,
+  u.waktu_proses_mulai,
+  u.anchor_time,
+  u.nomor_antrian_kios,
 
-      -- estimasi selesai kalkulasi (anchor + kumulatif)
-      (u.anchor_time + make_interval(mins => u.cum_estimasi_menit)) AS estimasi_selesai_at_calc,
+  -- ✅ pakai INTERVAL * bigint
+  (u.anchor_time + (u.cum_estimasi_menit * INTERVAL '1 minute')) AS estimasi_selesai_at_calc,
 
-      -- sisa menit kumulatif dihitung di DB biar UI tinggal pakai
-      GREATEST(
-        0,
-        EXTRACT(EPOCH FROM ((u.anchor_time + make_interval(mins => u.cum_estimasi_menit)) - NOW()))::bigint
-      ) / 60 AS eta_menit_kumulatif
-    FROM urut u
-    ORDER BY u.kios_id ASC, u.anchor_time ASC, u.id ASC
-    LIMIT $2 OFFSET $3
+  GREATEST(
+    0,
+    EXTRACT(EPOCH FROM ((u.anchor_time + (u.cum_estimasi_menit * INTERVAL '1 minute')) - NOW()))::bigint
+  ) / 60 AS eta_menit_kumulatif
+FROM urut u
+ORDER BY u.kios_id ASC, u.anchor_time ASC, u.id ASC
+LIMIT $2 OFFSET $3
     `,
     [penjualId, limit, offset]
   )).rows;
