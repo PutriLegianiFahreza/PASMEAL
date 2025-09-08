@@ -215,17 +215,18 @@ async function getNewMenusService() {
   const result = await pool.query(
     `SELECT
        id,
-       foto_menu AS gambar_menu,   -- samakan dengan yang dipakai FE
+       COALESCE(foto_menu, gambar_menu) AS gambar_menu,
        nama_menu,
        deskripsi,
        harga,
        estimasi_menit,
-       status_tersedia
+       status_tersedia,
+       kios_id
      FROM menu
      ORDER BY id DESC
      LIMIT 5`
   );
-  return { status: 200, body: { message: 'OK', data: result.rows } };
+  return { status: 200, body: result.rows }; // ⬅️ array langsung
 }
 
 /* === Cari menu (pembeli) === */
@@ -234,10 +235,13 @@ async function searchMenusService(req) {
   if (!query) throw httpErr(400, 'Query pencarian wajib diisi');
 
   const result = await pool.query(
-    'SELECT id, foto_menu, nama_menu, deskripsi, harga, estimasi_menit, status_tersedia FROM menu WHERE nama_menu ILIKE $1',
+    `SELECT id, COALESCE(foto_menu, gambar_menu) AS gambar_menu,
+            nama_menu, deskripsi, harga, estimasi_menit, status_tersedia
+     FROM menu
+     WHERE nama_menu ILIKE $1`,
     [`%${query}%`]
   );
-  return { status: 200, body: result.rows };
+  return { status: 200, body: result.rows }; // ⬅️ array langsung
 }
 
 /* === Cari menu di kios tertentu (pembeli) === */
@@ -248,10 +252,13 @@ async function searchMenusByKiosService(req) {
   if (isNaN(kiosId)) throw httpErr(400, 'ID kios tidak valid');
 
   const result = await pool.query(
-    'SELECT id, foto_menu, nama_menu, deskripsi, harga, estimasi_menit, status_tersedia FROM menu WHERE kios_id = $1 AND nama_menu ILIKE $2',
+    `SELECT id, COALESCE(foto_menu, gambar_menu) AS gambar_menu,
+            nama_menu, deskripsi, harga, estimasi_menit, status_tersedia
+     FROM menu
+     WHERE kios_id = $1 AND nama_menu ILIKE $2`,
     [kiosId, `%${query}%`]
   );
-  return { status: 200, body: result.rows };
+  return { status: 200, body: result.rows }; // ⬅️ array langsung
 }
 
 /* === Detail menu (pembeli) === */
@@ -260,12 +267,15 @@ async function getMenuByIdForBuyerService(req) {
   if (isNaN(menuId)) throw httpErr(400, 'ID menu tidak valid');
 
   const result = await pool.query(
-    'SELECT id, foto_menu, nama_menu, deskripsi, harga, estimasi_menit, status_tersedia FROM menu WHERE id = $1',
+    `SELECT id, COALESCE(foto_menu, gambar_menu) AS gambar_menu,
+            nama_menu, deskripsi, harga, estimasi_menit, status_tersedia
+     FROM menu
+     WHERE id = $1`,
     [menuId]
   );
   if (result.rowCount === 0) throw httpErr(404, 'Menu tidak ditemukan');
 
-  return { status: 200, body: result.rows[0] };
+  return { status: 200, body: result.rows[0] }; // ⬅️ object tunggal
 }
 
 module.exports = {

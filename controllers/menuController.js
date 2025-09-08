@@ -88,8 +88,8 @@ const getMenusPaginated = async (req, res) => {
 // Ambil 5 menu terbaru (pembeli) → array langsung
 const getNewMenus = async (req, res) => {
   try {
-    const { status, rows } = await getNewMenusService();
-    return res.status(status).json(rows); // ← array []
+    const { status, body } = await getNewMenusService();
+    return res.status(status).json(body); // ⬅️ array
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -99,10 +99,9 @@ const getNewMenus = async (req, res) => {
 const searchMenus = async (req, res) => {
   try {
     const { status, body } = await searchMenusService(req);
-    return res.status(status).json(body); // ← array []
+    return res.status(status).json(body); // ⬅️ array
   } catch (err) {
-    if (err.status) return res.status(err.status).json({ message: err.message });
-    return res.status(500).json({ error: err.message });
+    return res.status(err.status || 500).json({ message: err.message });
   }
 };
 
@@ -110,10 +109,9 @@ const searchMenus = async (req, res) => {
 const searchMenusByKios = async (req, res) => {
   try {
     const { status, body } = await searchMenusByKiosService(req);
-    return res.status(status).json(body); // ← array []
+    return res.status(status).json(body); // ⬅️ array
   } catch (err) {
-    if (err.status) return res.status(err.status).json({ message: err.message });
-    return res.status(500).json({ error: err.message });
+    return res.status(err.status || 500).json({ message: err.message });
   }
 };
 
@@ -121,10 +119,9 @@ const searchMenusByKios = async (req, res) => {
 const getMenuByIdForBuyer = async (req, res) => {
   try {
     const { status, body } = await getMenuByIdForBuyerService(req);
-    return res.status(status).json(body); // ← row object
-  } catch (error) {
-    if (error.status) return res.status(error.status).json({ message: error.message });
-    return res.status(500).json({ message: 'Gagal mengambil detail menu', error: error.message });
+    return res.status(status).json(body); // ⬅️ object
+  } catch (err) {
+    return res.status(err.status || 500).json({ message: err.message });
   }
 };
 
