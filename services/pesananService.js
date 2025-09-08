@@ -188,52 +188,73 @@ async function getStatusPesananGuestService(req) {
   const guest_id = getGuestId(req);
   if (isNaN(pesananId)) throw httpErr(400, 'ID pesanan tidak valid');
 
-  // Ambil field yang dibutuhkan untuk perhitungan timer
-  const q = `
-    SELECT 
-      id, kios_id, status,
-      paid_at,
-      estimasi_mulai_at,
-      estimasi_selesai_at,
-      waktu_proses_mulai,
-      COALESCE(total_estimasi, 0) AS total_estimasi
-    FROM pesanan
-    WHERE id = $1 AND guest_id = $2
-    LIMIT 1
-  `;
-  const { rows } = await pool.query(q, [pesananId, guest_id]);
-  if (!rows.length) throw httpErr(404, 'Pesanan tidak ditemukan');
+  // Ambil pesanan target (untuk tahu kios & status)
+  const targetRes = await pool.query(
+    `SELECT id, kios_id, status
+     FROM pesanan
+     WHERE id = $1 AND guest_id = $2
+     LIMIT 1`,
+    [pesananId, guest_id]
+  );
+  if (!targetRes.rows.length) throw httpErr(404, 'Pesanan tidak ditemukan');
+  const target = targetRes.rows[0];
 
-  const p = rows[0];
+  // Ambil SEMUA pesanan aktif di kios tsb dan urutkan untuk simulasi antrian
+  const queueRes = await pool.query(
+    `SELECT
+       id,
+       COALESCE(waktu_proses_mulai, paid_at, created_at) AS anchor_time,  -- basis urut
+       waktu_proses_mulai,
+       paid_at,
+       created_at,
+       COALESCE(total_estimasi, 0) AS total_estimasi
+     FROM pesanan
+     WHERE kios_id = $1
+       AND status IN ('paid','processing','ready','delivering')
+     ORDER BY COALESCE(waktu_proses_mulai, paid_at, created_at) ASC, id ASC`,
+    [target.kios_id]
+  );
+  if (!queueRes.rows.length) {
+    // tidak ada antrean aktif di kios ini
+    return { status: 200, body: { status: target.status, eta_at: null, remaining_seconds: 0 } };
+  }
 
-  // Basis waktu: saat mulai proses kalau ada; kalau belum, pakai estimasi_mulai_at; fallback ke paid_at
-  // (dibuat di SQL agar konsisten)
-  const calcQ = `
-    SELECT 
-      (COALESCE($1::timestamptz, $2::timestamptz, $3::timestamptz)
-        + ($4 || ' minutes')::interval)                         AS eta_at,
-      GREATEST(
-        0,
-        EXTRACT(EPOCH FROM (
-          (COALESCE($1::timestamptz, $2::timestamptz, $3::timestamptz)
-            + ($4 || ' minutes')::interval) - NOW()
-        ))
-      )::int                                                   AS remaining_seconds
-  `;
-  const { rows: calcRows } = await pool.query(calcQ, [
-    p.waktu_proses_mulai,   // $1 (paling prioritas saat status 'processing')
-    p.estimasi_mulai_at,    // $2 (kalau kamu pernah set jadwal estimasi mulai)
-    p.paid_at,              // $3 (fallback)
-    p.total_estimasi        // $4 menit
-  ]);
-  const { eta_at, remaining_seconds } = calcRows[0];
+  // Simulasikan jadwal akumulatif
+  let prevFinishMs = null;
+  let etaForTarget = null;
+
+  for (const row of queueRes.rows) {
+    // Bila order sudah "mulai diproses" → start lock ke waktu_proses_mulai
+    const anchorMs = row.anchor_time ? new Date(row.anchor_time).getTime() : Date.now();
+    const startMs = row.waktu_proses_mulai
+      ? new Date(row.waktu_proses_mulai).getTime()
+      : Math.max(prevFinishMs ?? anchorMs, anchorMs);
+
+    const durMs = Number(row.total_estimasi || 0) * 60 * 1000;
+    const finishMs = startMs + durMs;
+
+    if (row.id === pesananId) {
+      etaForTarget = finishMs;
+      break; // sudah ketemu, tidak perlu lanjut
+    }
+
+    prevFinishMs = finishMs; // untuk order berikutnya
+  }
+
+  // Jika tak ketemu (mis. status berubah): aman-kan response
+  if (!etaForTarget) {
+    return { status: 200, body: { status: target.status, eta_at: null, remaining_seconds: 0 } };
+  }
+
+  const now = Date.now();
+  const remaining = Math.max(0, Math.floor((etaForTarget - now) / 1000));
 
   return {
     status: 200,
     body: {
-      status: p.status,
-      eta_at,                // ISO string ETA
-      remaining_seconds,     // integer detik sisa untuk countdown FE
+      status: target.status,
+      eta_at: new Date(etaForTarget).toISOString(),
+      remaining_seconds: remaining
     }
   };
 }
@@ -323,12 +344,14 @@ async function getPesananMasukService(req) {
 
   const result = await pool.query(
     `SELECT p.id, p.kios_id, p.nama_pemesan, p.no_hp, p.total_harga, p.status,
-            p.payment_type, p.tipe_pengantaran, p.diantar_ke, p.paid_at, p.total_estimasi,
-            ROW_NUMBER() OVER (ORDER BY p.paid_at ASC) AS nomor_antrian
+            p.payment_type, p.tipe_pengantaran, p.diantar_ke, p.paid_at, p.created_at, p.total_estimasi,
+            ROW_NUMBER() OVER (
+              ORDER BY COALESCE(p.waktu_proses_mulai, p.paid_at, p.created_at) ASC, p.id ASC
+            ) AS nomor_antrian
      FROM pesanan p
      WHERE p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
        AND LOWER(p.status) IN ('paid', 'processing', 'ready', 'delivering')
-     ORDER BY p.paid_at ASC
+     ORDER BY COALESCE(p.waktu_proses_mulai, p.paid_at, p.created_at) ASC, p.id ASC
      LIMIT $2 OFFSET $3`,
     [penjualId, limit, offset]
   );
@@ -348,7 +371,7 @@ async function getPesananMasukService(req) {
     nomor_antrian: row.nomor_antrian,
     pesanan_id: row.id,
     kios_id: row.kios_id,
-    tanggal_bayar: formatTanggal(row.paid_at),
+    tanggal_bayar: formatTanggal(row.paid_at || row.created_at),
     nama: row.nama_pemesan,
     no_hp: row.no_hp,
     metode_bayar: row.payment_type?.toUpperCase() || 'QRIS',
@@ -364,39 +387,37 @@ async function getPesananMasukService(req) {
 // --- Detail pesanan masuk ---
 async function getDetailPesananMasukService(req) {
   const pesananAntreanRes = await pool.query(
-    `SELECT p.id, p.paid_at, p.total_estimasi, p.status, p.tipe_pengantaran,
+    `SELECT p.id, p.paid_at, p.created_at, p.total_estimasi, p.status, p.tipe_pengantaran,
             p.nama_pemesan, p.no_hp, p.payment_type, p.diantar_ke,
             p.catatan, p.total_harga, p.kios_id, p.waktu_proses_mulai
      FROM pesanan p
      WHERE p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
        AND p.status IN ('paid', 'processing', 'ready', 'delivering')
-     ORDER BY p.paid_at ASC`,
+     ORDER BY COALESCE(p.waktu_proses_mulai, p.paid_at, p.created_at) ASC, p.id ASC`,
     [req.user.id]
   );
 
-  if (pesananAntreanRes.rows.length === 0) throw httpErr(404, 'Tidak ada pesanan aktif');
+  if (!pesananAntreanRes.rows.length) throw httpErr(404, 'Tidak ada pesanan aktif');
 
-  let waktuSelesaiSebelumnya = null;
-
-  const antreanDenganJadwal = pesananAntreanRes.rows.map((pesanan, index) => {
-    const waktuMulaiMillis = pesanan.waktu_proses_mulai
-      ? new Date(pesanan.waktu_proses_mulai).getTime()
-      : (waktuSelesaiSebelumnya || new Date(pesanan.paid_at).getTime());
-
-    const durasiMillis = Number(pesanan.total_estimasi || 0) * 60 * 1000;
-    const waktuSelesaiMillis = waktuMulaiMillis + durasiMillis;
-
-    waktuSelesaiSebelumnya = waktuSelesaiMillis;
+  let prevFinishMs = null;
+  const scheduled = pesananAntreanRes.rows.map((p, idx) => {
+    const anchorMs = new Date(p.waktu_proses_mulai || p.paid_at || p.created_at).getTime();
+    const startMs = p.waktu_proses_mulai
+      ? new Date(p.waktu_proses_mulai).getTime()
+      : Math.max(prevFinishMs ?? anchorMs, anchorMs);
+    const durMs = Number(p.total_estimasi || 0) * 60 * 1000;
+    const finishMs = startMs + durMs;
+    prevFinishMs = finishMs;
 
     return {
-      ...pesanan,
-      nomor_antrian: index + 1,
-      estimasi_mulai_at: new Date(waktuMulaiMillis).toISOString(),
-      estimasi_selesai_at: new Date(waktuSelesaiMillis).toISOString(),
+      ...p,
+      nomor_antrian: idx + 1,
+      estimasi_mulai_at: new Date(startMs).toISOString(),
+      estimasi_selesai_at: new Date(finishMs).toISOString(),
     };
   });
 
-  const p = antreanDenganJadwal.find(row => row.id == req.params.id);
+  const p = scheduled.find(row => row.id == req.params.id);
   if (!p) throw httpErr(404, 'Pesanan tidak ditemukan dalam antrean aktif');
 
   const detailMenuRes = await pool.query(
@@ -413,26 +434,27 @@ async function getDetailPesananMasukService(req) {
       : null
   }));
 
-  const data = {
-    id: p.id,
-    nomor_antrian: p.nomor_antrian,
-    status_label: getStatusLabel(p.tipe_pengantaran, p.status),
-    nama: p.nama_pemesan,
-    no_hp: p.no_hp,
-    metode_bayar: p.payment_type?.toUpperCase() || 'QRIS',
-    tipe_pengantaran: p.tipe_pengantaran === 'diantar' ? `${p.diantar_ke}` : 'Ambil Sendiri',
-    tanggal_bayar: formatTanggal(p.paid_at),
-    paid_at: p.paid_at,
-    catatan: p.catatan,
-    total_harga: Number(p.total_harga),
-    total_estimasi: Number(p.total_estimasi),
-    status: p.status,
-    menu,
-    estimasi_mulai_at: p.estimasi_mulai_at,
-    estimasi_selesai_at: p.estimasi_selesai_at,
+  return {
+    status: 200,
+    body: {
+      id: p.id,
+      nomor_antrian: p.nomor_antrian,
+      status_label: getStatusLabel(p.tipe_pengantaran, p.status),
+      nama: p.nama_pemesan,
+      no_hp: p.no_hp,
+      metode_bayar: p.payment_type?.toUpperCase() || 'QRIS',
+      tipe_pengantaran: p.tipe_pengantaran === 'diantar' ? `${p.diantar_ke}` : 'Ambil Sendiri',
+      tanggal_bayar: formatTanggal(p.paid_at || p.created_at),
+      paid_at: p.paid_at,
+      catatan: p.catatan,
+      total_harga: Number(p.total_harga),
+      total_estimasi: Number(p.total_estimasi),
+      status: p.status,
+      menu,
+      estimasi_mulai_at: p.estimasi_mulai_at,
+      estimasi_selesai_at: p.estimasi_selesai_at,
+    }
   };
-
-  return { status: 200, body: data };
 }
 
 // --- Badge jumlah pesanan masuk ---

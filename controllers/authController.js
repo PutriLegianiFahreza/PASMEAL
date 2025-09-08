@@ -1,4 +1,3 @@
-// controllers/authController.js (refactor: thin controller)
 const AuthService = require('../services/authService');
 
 // REGISTER PENJUAL
@@ -19,7 +18,7 @@ const register = async (req, res) => {
 // VERIFY OTP
 const verifyOtp = async (req, res) => {
   try {
-    const out = await AuthService.verifyOtp(req.body); // { penjual_id, token }
+    const out = await AuthService.verifyOtp(req.body); 
     return res.status(200).json({
       message: 'OTP berhasil diverifikasi',
       penjual_id: out.penjual_id,
