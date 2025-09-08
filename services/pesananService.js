@@ -184,64 +184,56 @@ async function buatPesananService(req) {
 
 // --- Status pesanan untuk guest ---
 async function getStatusPesananGuestService(req) {
-  const { id } = req.params;
+  const pesananId = parseInt(req.params.id, 10);
   const guest_id = getGuestId(req);
+  if (isNaN(pesananId)) throw httpErr(400, 'ID pesanan tidak valid');
 
-  const pesananRes = await pool.query(
-    `SELECT kios_id, status
-     FROM pesanan
-     WHERE id = $1 AND guest_id = $2`,
-    [id, guest_id]
-  );
-  if (pesananRes.rows.length === 0) throw httpErr(404, 'Pesanan tidak ditemukan');
+  // Ambil field yang dibutuhkan untuk perhitungan timer
+  const q = `
+    SELECT 
+      id, kios_id, status,
+      paid_at,
+      estimasi_mulai_at,
+      estimasi_selesai_at,
+      waktu_proses_mulai,
+      COALESCE(total_estimasi, 0) AS total_estimasi
+    FROM pesanan
+    WHERE id = $1 AND guest_id = $2
+    LIMIT 1
+  `;
+  const { rows } = await pool.query(q, [pesananId, guest_id]);
+  if (!rows.length) throw httpErr(404, 'Pesanan tidak ditemukan');
 
-  const { kios_id, status } = pesananRes.rows[0];
+  const p = rows[0];
 
-  if (status === 'done') {
-    return { status: 200, body: { status, estimasi_selesai_at: new Date().toISOString() } };
-  }
-
-  const antreanRes = await pool.query(
-    `SELECT id, paid_at, total_estimasi, status, estimasi_mulai_at, waktu_proses_mulai
-     FROM pesanan
-     WHERE kios_id = $1
-       AND status IN ('paid', 'processing', 'ready', 'delivering')
-     ORDER BY paid_at ASC`,
-    [kios_id]
-  );
-  if (antreanRes.rows.length === 0) throw httpErr(404, 'Tidak ada antrean aktif');
-
-  let waktuSelesaiSebelumnya = null;
-
-  const antreanDenganJadwal = antreanRes.rows.map(p => {
-    let waktuMulaiMillis = null;
-    if (p.waktu_proses_mulai) {
-      waktuMulaiMillis = new Date(p.waktu_proses_mulai).getTime();
-    }
-    const durasiMillis = Number(p.total_estimasi || 0) * 60000;
-    const waktuSelesaiMillis = waktuMulaiMillis !== null ? waktuMulaiMillis + durasiMillis : null;
-
-    if (waktuSelesaiMillis !== null) {
-      waktuSelesaiSebelumnya = waktuSelesaiMillis;
-    }
-
-    return {
-      ...p,
-      estimasi_selesai_at_calc: waktuSelesaiMillis ? new Date(waktuSelesaiMillis).toISOString() : null,
-    };
-  });
-
-  const targetPesanan = antreanDenganJadwal.find(p => p.id == id);
-
-  if (!targetPesanan) {
-    return { status: 200, body: { status, estimasi_selesai_at: null } };
-  }
+  // Basis waktu: saat mulai proses kalau ada; kalau belum, pakai estimasi_mulai_at; fallback ke paid_at
+  // (dibuat di SQL agar konsisten)
+  const calcQ = `
+    SELECT 
+      (COALESCE($1::timestamptz, $2::timestamptz, $3::timestamptz)
+        + ($4 || ' minutes')::interval)                         AS eta_at,
+      GREATEST(
+        0,
+        EXTRACT(EPOCH FROM (
+          (COALESCE($1::timestamptz, $2::timestamptz, $3::timestamptz)
+            + ($4 || ' minutes')::interval) - NOW()
+        ))
+      )::int                                                   AS remaining_seconds
+  `;
+  const { rows: calcRows } = await pool.query(calcQ, [
+    p.waktu_proses_mulai,   // $1 (paling prioritas saat status 'processing')
+    p.estimasi_mulai_at,    // $2 (kalau kamu pernah set jadwal estimasi mulai)
+    p.paid_at,              // $3 (fallback)
+    p.total_estimasi        // $4 menit
+  ]);
+  const { eta_at, remaining_seconds } = calcRows[0];
 
   return {
     status: 200,
     body: {
-      status: targetPesanan.status,
-      estimasi_selesai_at: targetPesanan.estimasi_selesai_at_calc,
+      status: p.status,
+      eta_at,                // ISO string ETA
+      remaining_seconds,     // integer detik sisa untuk countdown FE
     }
   };
 }
