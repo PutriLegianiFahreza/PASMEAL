@@ -188,8 +188,8 @@ async function getStatusPesananGuestService(req) {
   const guest_id = getGuestId(req);
   if (isNaN(pesananId)) throw httpErr(400, 'ID pesanan tidak valid');
 
-  // Ambil target
-  const targetRes = await pool.query(
+  // target
+  const tRes = await pool.query(
     `SELECT id, kios_id, status, created_at, paid_at, waktu_proses_mulai,
             COALESCE(total_estimasi,0) AS total_estimasi
      FROM pesanan
@@ -197,11 +197,11 @@ async function getStatusPesananGuestService(req) {
      LIMIT 1`,
     [pesananId, guest_id]
   );
-  if (!targetRes.rows.length) throw httpErr(404, 'Pesanan tidak ditemukan');
-  const t = targetRes.rows[0];
+  if (!tRes.rows.length) throw httpErr(404, 'Pesanan tidak ditemukan');
+  const t = tRes.rows[0];
 
-  // Ambil antrean aktif di kios
-  const activeRes = await pool.query(
+  // antrean aktif
+  const qRes = await pool.query(
     `SELECT id,
             COALESCE(waktu_proses_mulai, paid_at, created_at) AS anchor_time,
             waktu_proses_mulai, paid_at, created_at,
@@ -213,8 +213,8 @@ async function getStatusPesananGuestService(req) {
     [t.kios_id]
   );
 
-  // Jika target belum ada di daftar (mis. masih 'pending'), selipkan agar tetap dapat ETA
-  let list = activeRes.rows;
+  // selipkan kalau belum ada (pending)
+  let list = qRes.rows;
   if (!list.some(r => r.id === pesananId)) {
     list = list.concat([{
       id: t.id,
@@ -226,12 +226,19 @@ async function getStatusPesananGuestService(req) {
     }]);
   }
 
-  // Tidak ada item sama sekali → pulangkan nilai aman
   if (list.length === 0) {
-    return { status: 200, body: { status: t.status, estimasi_selesai_at: null, remaining_seconds: 0 } };
+    return {
+      status: 200,
+      body: {
+        status: t.status,
+        estimasi_selesai_at: null,
+        remaining_seconds: 0,
+        server_time: new Date().toISOString()
+      }
+    };
   }
 
-  // Simulasi kumulatif
+  // simulasi kumulatif sederhana (seperti logic lama)
   let prevFinishMs = null;
   let etaMs = null;
 
@@ -245,29 +252,30 @@ async function getStatusPesananGuestService(req) {
     const finishMs = startMs + durMs;
 
     if (row.id === pesananId) {
-      etaMs = Number.isFinite(finishMs) ? finishMs : null;
+      etaMs = finishMs;
       break;
     }
     prevFinishMs = finishMs;
   }
 
-  // Guard nilai
-  const estimasi_selesai_at = (etaMs && Number.isFinite(etaMs)) ? new Date(etaMs).toISOString() : null;
-  const remaining_seconds = (etaMs && Number.isFinite(etaMs))
-    ? Math.max(0, Math.floor((etaMs - Date.now()) / 1000))
-    : 0;
+  const estimasi_selesai_at = etaMs ? new Date(etaMs).toISOString() : null;
+  const remaining_seconds = etaMs ? Math.max(0, Math.floor((etaMs - Date.now()) / 1000)) : 0;
 
   return {
     status: 200,
     body: {
       status: t.status,
-      estimasi_selesai_at,      // FE lama pakai ini → tidak NaN
-      remaining_seconds,        // FE baru bisa pakai countdown ini
-      // opsional: mirror nama lain bila dibutuhkan FE baru
+      // FE lama:
+      estimasi_selesai_at,
+      // FE countdown:
+      remaining_seconds,
+      server_time: new Date().toISOString(), // buat sync timer di FE
+      // alias opsional:
       eta_at: estimasi_selesai_at
     }
   };
 }
+
 
 // --- Daftar pesanan by guest ---
 async function getPesananByGuestService(req) {
@@ -352,59 +360,70 @@ async function getPesananMasukService(req) {
   const limit = 8;
   const offset = (page - 1) * limit;
 
-  // 1) Ambil SEMUA pesanan aktif (tanpa LIMIT/OFFSET)
+  // Hitung kumulatif per-kios langsung di SQL
   const rows = (await pool.query(
-    `SELECT p.id, p.kios_id, p.nama_pemesan, p.no_hp, p.total_harga, p.status,
-            p.payment_type, p.tipe_pengantaran, p.diantar_ke,
-            p.paid_at, p.created_at, COALESCE(p.total_estimasi,0) AS total_estimasi,
-            p.waktu_proses_mulai
-     FROM pesanan p
-     WHERE p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
-       AND LOWER(p.status) IN ('paid','processing','ready','delivering')
-     ORDER BY p.kios_id ASC,
-              COALESCE(p.waktu_proses_mulai, p.paid_at, p.created_at) ASC,
-              p.id ASC`,
-    [penjualId]
+    `
+    WITH aktif AS (
+      SELECT
+        p.*,
+        COALESCE(p.waktu_proses_mulai, p.paid_at, p.created_at) AS anchor_time
+      FROM pesanan p
+      WHERE p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
+        AND LOWER(p.status) IN ('paid','processing','ready','delivering')
+    ),
+    urut AS (
+      SELECT
+        a.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY a.kios_id
+          ORDER BY a.anchor_time ASC, a.id ASC
+        ) AS nomor_antrian_kios,
+
+        -- kumulasi menit per kios (5 -> 10 -> 15)
+        SUM(COALESCE(a.total_estimasi,0)) OVER (
+          PARTITION BY a.kios_id
+          ORDER BY a.anchor_time ASC, a.id ASC
+          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS cum_estimasi_menit
+      FROM aktif a
+    )
+    SELECT
+      u.id, u.kios_id, u.nama_pemesan, u.no_hp, u.total_harga, u.status,
+      u.payment_type, u.tipe_pengantaran, u.diantar_ke,
+      u.paid_at, u.created_at, COALESCE(u.total_estimasi,0) AS total_estimasi,
+      u.waktu_proses_mulai,
+      u.anchor_time,
+      u.nomor_antrian_kios,
+
+      -- estimasi selesai kalkulasi (anchor + kumulatif)
+      (u.anchor_time + make_interval(mins => u.cum_estimasi_menit)) AS estimasi_selesai_at_calc,
+
+      -- sisa menit kumulatif dihitung di DB biar UI tinggal pakai
+      GREATEST(
+        0,
+        EXTRACT(EPOCH FROM ((u.anchor_time + make_interval(mins => u.cum_estimasi_menit)) - NOW()))::bigint
+      ) / 60 AS eta_menit_kumulatif
+    FROM urut u
+    ORDER BY u.kios_id ASC, u.anchor_time ASC, u.id ASC
+    LIMIT $2 OFFSET $3
+    `,
+    [penjualId, limit, offset]
   )).rows;
 
-  const total = rows.length;
+  // total untuk pagination yang akurat
+  const countRes = await pool.query(
+    `SELECT COUNT(*)::int AS total
+     FROM pesanan p
+     WHERE p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
+       AND LOWER(p.status) IN ('paid','processing','ready','delivering')`,
+    [penjualId]
+  );
+  const total = countRes.rows[0].total;
   const totalPages = Math.ceil(total / limit);
 
-  // 2) Akumulasi PER-KIOS
-  const prevFinishByKios = new Map(); // kios_id -> finishMs terakhir
-  const nomorByKios = new Map();      // kios_id -> nomor antrian
-
-  const scheduledAll = rows.map((p) => {
-    const kiosId = p.kios_id;
-    const prevFinishMs = prevFinishByKios.get(kiosId) ?? null;
-    const nomor = (nomorByKios.get(kiosId) ?? 0) + 1;
-    nomorByKios.set(kiosId, nomor);
-
-    const anchorMs = new Date(p.waktu_proses_mulai || p.paid_at || p.created_at).getTime();
-    const startMs  = p.waktu_proses_mulai
-      ? new Date(p.waktu_proses_mulai).getTime()
-      : Math.max(prevFinishMs ?? anchorMs, anchorMs);
-
-    const durMs    = Math.max(0, Number(p.total_estimasi) || 0) * 60 * 1000;
-    const finishMs = startMs + durMs;
-
-    prevFinishByKios.set(kiosId, finishMs);
-
-    return {
-      ...p,
-      nomor_antrian: nomor,
-      estimasi_mulai_at: new Date(startMs).toISOString(),
-      estimasi_selesai_at: new Date(finishMs).toISOString(),
-      eta_menit_kumulatif: Math.ceil(Math.max(0, (finishMs - Date.now()) / 60000))
-    };
-  });
-
-  // 3) Pagination SETELAH akumulasi
-  const pageItems = scheduledAll.slice(offset, offset + limit);
-
-  const data = pageItems.map(row => ({
+  const data = rows.map(row => ({
     id: row.id,
-    nomor_antrian: row.nomor_antrian,
+    nomor_antrian: row.nomor_antrian_kios, // nomor dalam kios tsb
     pesanan_id: row.id,
     kios_id: row.kios_id,
     tanggal_bayar: formatTanggal(row.paid_at || row.created_at),
@@ -413,16 +432,19 @@ async function getPesananMasukService(req) {
     metode_bayar: row.payment_type?.toUpperCase() || 'QRIS',
     tipe_pengantaran: row.tipe_pengantaran === 'diantar' ? `${row.diantar_ke}` : 'Ambil Sendiri',
     total_harga: Number(row.total_harga),
-    total_estimasi: Number(row.total_estimasi),
-    estimasi_mulai_at: row.estimasi_mulai_at,
-    estimasi_selesai_at: row.estimasi_selesai_at,
-    eta_menit_kumulatif: row.eta_menit_kumulatif,
-    status: getStatusLabel(row.tipe_pengantaran, row.status)
+    total_estimasi: Number(row.total_estimasi), // durasi order itu sendiri
+
+    // ✅ ini yang dipakai UI untuk “waktu estimasi” kumulatif
+    estimasi_selesai_at: row.estimasi_selesai_at_calc
+      ? new Date(row.estimasi_selesai_at_calc).toISOString()
+      : null,
+    eta_menit_kumulatif: Math.ceil(Number(row.eta_menit_kumulatif || 0)),
+
+    status: getStatusLabel(row.tipe_pengantaran, row.status),
   }));
 
   return { status: 200, body: { page, totalPages, limit, total, data } };
 }
-
 
 // --- Detail pesanan masuk (jadwal kumulatif, style baru) ---
 async function getDetailPesananMasukService(req) {
