@@ -213,20 +213,13 @@ async function getMenusPaginatedService(req) {
 /* === Ambil 5 menu terbaru (pembeli) === */
 async function getNewMenusService() {
   const result = await pool.query(
-    `SELECT
-       id,
-       COALESCE(foto_menu, gambar_menu) AS gambar_menu,
-       nama_menu,
-       deskripsi,
-       harga,
-       estimasi_menit,
-       status_tersedia,
-       kios_id
+    `SELECT id, foto_menu, nama_menu, deskripsi, harga, estimasi_menit,
+            status_tersedia, kios_id
      FROM menu
-     ORDER BY id DESC
+     ORDER BY created_at DESC
      LIMIT 5`
   );
-  return { status: 200, body: result.rows }; // ⬅️ array langsung
+  return { status: 200, body: result.rows }; // array langsung
 }
 
 /* === Cari menu (pembeli) === */
@@ -235,13 +228,13 @@ async function searchMenusService(req) {
   if (!query) throw httpErr(400, 'Query pencarian wajib diisi');
 
   const result = await pool.query(
-    `SELECT id, COALESCE(foto_menu, gambar_menu) AS gambar_menu,
-            nama_menu, deskripsi, harga, estimasi_menit, status_tersedia
+    `SELECT id, foto_menu, nama_menu, deskripsi, harga, estimasi_menit, status_tersedia
      FROM menu
-     WHERE nama_menu ILIKE $1`,
+     WHERE nama_menu ILIKE $1
+     ORDER BY created_at DESC`,
     [`%${query}%`]
   );
-  return { status: 200, body: result.rows }; // ⬅️ array langsung
+  return { status: 200, body: result.rows }; // array langsung
 }
 
 /* === Cari menu di kios tertentu (pembeli) === */
@@ -252,13 +245,13 @@ async function searchMenusByKiosService(req) {
   if (isNaN(kiosId)) throw httpErr(400, 'ID kios tidak valid');
 
   const result = await pool.query(
-    `SELECT id, COALESCE(foto_menu, gambar_menu) AS gambar_menu,
-            nama_menu, deskripsi, harga, estimasi_menit, status_tersedia
+    `SELECT id, foto_menu, nama_menu, deskripsi, harga, estimasi_menit, status_tersedia
      FROM menu
-     WHERE kios_id = $1 AND nama_menu ILIKE $2`,
+     WHERE kios_id = $1 AND nama_menu ILIKE $2
+     ORDER BY created_at DESC`,
     [kiosId, `%${query}%`]
   );
-  return { status: 200, body: result.rows }; // ⬅️ array langsung
+  return { status: 200, body: result.rows }; // array langsung
 }
 
 /* === Detail menu (pembeli) === */
@@ -267,15 +260,14 @@ async function getMenuByIdForBuyerService(req) {
   if (isNaN(menuId)) throw httpErr(400, 'ID menu tidak valid');
 
   const result = await pool.query(
-    `SELECT id, COALESCE(foto_menu, gambar_menu) AS gambar_menu,
-            nama_menu, deskripsi, harga, estimasi_menit, status_tersedia
+    `SELECT id, foto_menu, nama_menu, deskripsi, harga, estimasi_menit, status_tersedia
      FROM menu
      WHERE id = $1`,
     [menuId]
   );
   if (result.rowCount === 0) throw httpErr(404, 'Menu tidak ditemukan');
 
-  return { status: 200, body: result.rows[0] }; // ⬅️ object tunggal
+  return { status: 200, body: result.rows[0] }; // object tunggal
 }
 
 module.exports = {
