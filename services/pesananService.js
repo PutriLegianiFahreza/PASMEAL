@@ -182,99 +182,171 @@ async function buatPesananService(req) {
   }
 }
 
-// --- Status pesanan untuk guest (timer mulai SETELAH penjual klik PROSES) ---
+// --- Status pesanan untuk guest (timer baru aktif setelah diproses; sebelum itu hanya estimasi giliran) ---
 async function getStatusPesananGuestService(req) {
   const pesananId = parseInt(req.params.id, 10);
   const guest_id = getGuestId(req);
   if (isNaN(pesananId)) throw httpErr(400, 'ID pesanan tidak valid');
 
-  // Ambil pesanan target
+  // Ambil target + kios
   const tRes = await pool.query(
     `SELECT id, kios_id, status, created_at, paid_at, waktu_proses_mulai,
             COALESCE(total_estimasi,0) AS total_estimasi
-     FROM pesanan
-     WHERE id = $1 AND guest_id = $2
-     LIMIT 1`,
+       FROM pesanan
+      WHERE id = $1 AND guest_id = $2
+      LIMIT 1`,
     [pesananId, guest_id]
   );
   if (!tRes.rows.length) throw httpErr(404, 'Pesanan tidak ditemukan');
   const t = tRes.rows[0];
 
-  // Jika belum diproses (pending/paid) -> JANGAN tampilkan timer
-  if (t.status === 'pending' || t.status === 'paid' || !t.waktu_proses_mulai) {
-    return {
-      status: 200,
-      body: {
-        status: t.status,                // FE akan tampil "Menunggu Diproses"
-        estimasi_selesai_at: null,
-        remaining_seconds: 0,
-        remaining_minutes: 0,
-        server_time: new Date().toISOString(),
-        eta_at: null
-      }
-    };
-  }
+  // Flag: sudah mulai diproses?
+  const statusLower = (t.status || '').toLowerCase();
+  const sudahMulaiDiproses =
+    ['processing','ready','delivering'].includes(statusLower) || !!t.waktu_proses_mulai;
 
-  // Sudah diproses/ready/delivering -> hitung ETA serial berdasarkan antrean AKTIF saja
-  const qRes = await pool.query(
-    `SELECT id,
-            COALESCE(waktu_proses_mulai, paid_at, created_at) AS anchor_time,
-            waktu_proses_mulai, paid_at, created_at,
-            COALESCE(total_estimasi,0) AS total_estimasi
-     FROM pesanan
-     WHERE kios_id = $1
-       AND status IN ('processing','ready','delivering')
-     ORDER BY COALESCE(waktu_proses_mulai, paid_at, created_at) ASC, id ASC`,
-    [t.kios_id]
+  // CTE:
+  // - "aktif": hanya order yang SUDAH diproses -> mempengaruhi timer utama
+  // - "tambah_target": selipkan target (apa pun statusnya) agar dapat planned start (giliran)
+  const etaRowRes = await pool.query(
+    `
+    WITH aktif AS (
+      SELECT
+        p.id, p.kios_id,
+        COALESCE(p.waktu_proses_mulai, p.paid_at, p.created_at) AS anchor_time,
+        COALESCE(p.total_estimasi,0) AS total_estimasi
+      FROM pesanan p
+      WHERE p.kios_id = $1
+        AND LOWER(p.status) IN ('processing','ready','delivering')  -- paid DIHAPUS: timer utama hanya utk yang sudah diproses
+    ),
+    tambah_target AS (
+      SELECT * FROM aktif
+      UNION ALL
+      SELECT
+        p.id, p.kios_id,
+        COALESCE(p.waktu_proses_mulai, p.paid_at, p.created_at) AS anchor_time,
+        COALESCE(p.total_estimasi,0) AS total_estimasi
+      FROM pesanan p
+      WHERE p.id = $2
+        AND LOWER(p.status) IN ('pending','paid','processing','ready','delivering')
+    ),
+    urut AS (
+      SELECT
+        a.*,
+        ROW_NUMBER() OVER (ORDER BY a.anchor_time ASC, a.id ASC) AS rn,
+        -- kumulatif termasuk baris saat ini (untuk finish)
+        SUM(a.total_estimasi) OVER (
+          ORDER BY a.anchor_time ASC, a.id ASC
+          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS cum_estimasi_menit,
+        -- kumulatif sebelum baris saat ini (untuk start)
+        COALESCE(
+          LAG(
+            SUM(a.total_estimasi) OVER (
+              ORDER BY a.anchor_time ASC, a.id ASC
+              ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            )
+          ) OVER (ORDER BY a.anchor_time ASC, a.id ASC),
+          0
+        ) AS cum_before_menit
+      FROM tambah_target a
+    )
+    SELECT
+      u.id,
+      u.anchor_time,
+      u.total_estimasi,
+      u.cum_estimasi_menit,
+      u.cum_before_menit,
+      (u.anchor_time + (u.cum_before_menit * INTERVAL '1 minute')) AS start_at_calc,
+      (u.anchor_time + (u.cum_estimasi_menit * INTERVAL '1 minute')) AS estimasi_selesai_at_calc,
+      -- ETA (selesai) utk timer utama
+      GREATEST(
+        0,
+        EXTRACT(EPOCH FROM (
+          (u.anchor_time + (u.cum_estimasi_menit * INTERVAL '1 minute')) - NOW()
+        ))::bigint
+      ) AS eta_detik,
+      -- Planned wait (menuju mulai dikerjakan)
+      GREATEST(
+        0,
+        EXTRACT(EPOCH FROM (
+          (u.anchor_time + (u.cum_before_menit * INTERVAL '1 minute')) - NOW()
+        ))::bigint
+      ) AS planned_wait_detik
+    FROM urut u
+    WHERE u.id = $2
+    LIMIT 1
+    `,
+    [t.kios_id, pesananId]
   );
 
-  // Kalau karena suatu hal target tidak di antrean aktif, anggap belum mulai
-  if (!qRes.rows.some(r => r.id === pesananId)) {
+  // Kalau antrean tidak ketemu (sangat jarang), kembalikan default minimal
+  if (!etaRowRes.rows.length) {
     return {
       status: 200,
       body: {
         status: t.status,
+        is_timer_active: false,
         estimasi_selesai_at: null,
         remaining_seconds: 0,
         remaining_minutes: 0,
+        planned_wait_seconds: 0,
+        planned_wait_minutes: 0,
+        planned_start_at: null,
         server_time: new Date().toISOString(),
         eta_at: null
       }
     };
   }
 
-  // Kalkulasi serial: start tiap order >= finish order sebelumnya
-  let prevFinishMs = null;
-  let etaMs = null;
+  const etaRow = etaRowRes.rows[0];
+  const toISO = (d) => (d ? new Date(d).toISOString() : null);
 
-  for (const row of qRes.rows) {
-    const anchorMs = row.anchor_time ? new Date(row.anchor_time).getTime() : Date.now();
-    const baseStart = row.waktu_proses_mulai ? new Date(row.waktu_proses_mulai).getTime() : anchorMs;
-    const startMs   = Math.max(prevFinishMs ?? baseStart, baseStart);
-    const durMs     = Math.max(0, Number(row.total_estimasi) || 0) * 60 * 1000;
-    const finishMs  = startMs + durMs;
+  let estimasi_selesai_at = etaRow.estimasi_selesai_at_calc ? toISO(etaRow.estimasi_selesai_at_calc) : null;
+  let planned_start_at = etaRow.start_at_calc ? toISO(etaRow.start_at_calc) : null;
 
-    if (row.id === pesananId) {
-      etaMs = finishMs;
-      break;
-    }
-    prevFinishMs = finishMs;
+  let remaining_seconds = Math.max(0, Number(etaRow.eta_detik || 0));
+  let remaining_minutes = Math.ceil(remaining_seconds / 60);
+
+  let planned_wait_seconds = Math.max(0, Number(etaRow.planned_wait_detik || 0));
+  let planned_wait_minutes = Math.ceil(planned_wait_seconds / 60);
+
+  // Matikan countdown utama jika BELUM diproses; gunakan planned wait saja
+  let is_timer_active = false;
+  if (!sudahMulaiDiproses) {
+    estimasi_selesai_at = null;
+    remaining_seconds = 0;
+    remaining_minutes = 0;
+    is_timer_active = false;
+  } else {
+    // Sudah diproses: planned tidak relevan
+    planned_wait_seconds = 0;
+    planned_wait_minutes = 0;
+    planned_start_at = null;
+    is_timer_active = true;
   }
 
-  const now = Date.now();
-  const estimasi_selesai_at = etaMs ? new Date(etaMs).toISOString() : null;
-  const remaining_seconds   = etaMs ? Math.max(0, Math.floor((etaMs - now) / 1000)) : 0;
-  const remaining_minutes   = Math.ceil(remaining_seconds / 60);
+  // Tidak ada lagi override status untuk FE lama
+  const statusForFE = t.status;
 
   return {
     status: 200,
     body: {
-      status: t.status,                 // TANPA override; pakai status asli
+      status: statusForFE,
+
+      // Timer utama (aktif jika sudah diproses)
+      is_timer_active,
       estimasi_selesai_at,
-      remaining_seconds,                // detik untuk Timer FE
-      remaining_minutes,                // opsional
+      remaining_seconds,
+      remaining_minutes,
+
+      // Estimasi giliran (hanya saat pending/paid)
+      planned_wait_seconds,
+      planned_wait_minutes,
+      planned_start_at,
+
       server_time: new Date().toISOString(),
-      eta_at: estimasi_selesai_at
+      eta_at: estimasi_selesai_at // kompat lama
     }
   };
 }
