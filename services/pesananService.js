@@ -560,24 +560,27 @@ async function updateStatusPesananService(req) {
             NOW(),
             COALESCE(MAX(estimasi_selesai_at), NOW())
           ) AS start_at
-           FROM pesanan
-          WHERE kios_id = $1
-            AND status IN ('processing','ready','delivering')`,
+         FROM pesanan
+        WHERE kios_id = $1
+          AND status IN ('processing','ready','delivering')`,
         [pesananTarget.kios_id]
       );
-      const startAt = startRow.rows[0].start_at;
+      const startAt = startRow.rows[0].start_at; // timestamptz dari PG
 
+      // ⚠️ PISAHKAN PARAM untuk beda tipe kolom:
+      // - waktu_proses_mulai: kemungkinan TIMESTAMP (tanpa TZ)
+      // - estimasi_mulai_at / estimasi_selesai_at: TIMESTAMPTZ
       const upd = await client.query(
         `UPDATE pesanan
             SET status = 'processing',
-                waktu_proses_mulai = $1,
-                estimasi_mulai_at  = $1,
-                estimasi_selesai_at = $1 + ($2 * INTERVAL '1 minute'),
+                waktu_proses_mulai = $1::timestamp,
+                estimasi_mulai_at  = $2::timestamptz,
+                estimasi_selesai_at = $2::timestamptz + ($3 * INTERVAL '1 minute'),
                 delayed = false
-          WHERE id = $3
-            AND kios_id = $4
+          WHERE id = $4
+            AND kios_id = $5
         RETURNING *`,
-        [startAt, menit, id, pesananTarget.kios_id]
+        [startAt, startAt, menit, id, pesananTarget.kios_id]
       );
 
       await client.query('COMMIT');
