@@ -46,27 +46,27 @@ async function createKiosService(req) {
     );
 
     // generate OTP (pertahankan behavior lama)
-const kode_otp = Math.floor(100000 + Math.random() * 900000).toString();
-const expiredAt = new Date(Date.now() + 3 * 60 * 1000); // 3 menit
+    const kode_otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiredAt = new Date(Date.now() + 3 * 60 * 1000); // 3 menit
 
-// hapus OTP aktif sebelumnya
-await pool.query(`DELETE FROM otp WHERE penjual_id = $1 AND is_used = FALSE`, [penjual_id]);
+    // hapus OTP aktif sebelumnya
+    await pool.query(`DELETE FROM otp WHERE penjual_id = $1 AND is_used = FALSE`, [penjual_id]);
 
-// HASH OTP sebelum simpan
-const bcrypt = require('bcrypt');
-const otpHash = await bcrypt.hash(kode_otp, 10);
+    // HASH OTP sebelum simpan
+    const otpHash = await bcrypt.hash(kode_otp, 10);
 
-await pool.query(
-  `INSERT INTO otp (penjual_id, otp_code, expired_at, is_used)
-   VALUES ($1, $2, $3, FALSE)`,
-  [penjual_id, otpHash, expiredAt] // <— simpan hash ke kolom otp_code
-);
+    await pool.query(
+      `INSERT INTO otp (penjual_id, otp_code, expired_at, is_used)
+       VALUES ($1, $2, $3, FALSE)`,
+      [penjual_id, otpHash, expiredAt] // simpan hash ke kolom otp_code
+    );
 
-// kirim OTP ke WA tetap plaintext (supaya user bisa input)
-Promise.resolve()
-  .then(() => sendWhatsAppOTP(noHp, kode_otp))
-  .then(() => console.log(`OTP dikirim ke ${noHp}`))
-  .catch(err => console.error('Gagal kirim OTP WA:', err.message));
+    // kirim OTP ke WA tetap plaintext
+    Promise.resolve()
+      .then(() => sendWhatsAppOTP(noHp, kode_otp))
+      .then(() => console.log(`OTP dikirim ke ${noHp}`))
+      .catch(err => console.error('Gagal kirim OTP WA:', err.message));
+
     return {
       status: 201,
       body: {
@@ -79,11 +79,12 @@ Promise.resolve()
       // duplicate key
       throw httpErr(409, 'Nama kios sudah digunakan');
     }
-    // lempar lagi biar controller kirim 500
     if (!err.status) err.status = 500;
     throw err;
   }
 }
+
+/* ===================== PEMBELI (return ARRAY langsung) ===================== */
 
 // MENAMPILKAN 8 KIOS DI HOMEPAGE (pembeli)
 async function getKiosHomepageService() {
@@ -93,14 +94,14 @@ async function getKiosHomepageService() {
      ORDER BY id DESC
      LIMIT 8`
   );
-  return { status: 200, body: { message: 'OK', data: result.rows } };
+  return { status: 200, body: result.rows }; // ← array langsung
 }
 
 // SEARCH KIOS (pembeli)
 async function searchKiosService(req) {
   const { query } = req.query;
   if (!query || query.trim() === '') {
-    return { status: 200, body: { message: 'OK', data: [] } };
+    return { status: 200, body: [] }; // ← array kosong
   }
   const result = await pool.query(
     `SELECT id, nama_kios, deskripsi, gambar_kios
@@ -109,7 +110,7 @@ async function searchKiosService(req) {
      ORDER BY id DESC`,
     [`%${query}%`]
   );
-  return { status: 200, body: { message: 'OK', data: result.rows } };
+  return { status: 200, body: result.rows }; // ← array langsung
 }
 
 // Ambil semua kios (pembeli)
@@ -119,21 +120,30 @@ async function getAllKiosService() {
      FROM kios
      ORDER BY id DESC`
   );
-  return { status: 200, body: { message: 'OK', data: result.rows } };
+  return { status: 200, body: result.rows }; // ← array langsung
 }
 
 // Ambil menu berdasarkan kios (pembeli)
-async function getMenusByKiosService(req) {
-  const kiosId = req.params.id;
+async function getMenusByKiosService(kiosId) {
   const result = await pool.query(
-    `SELECT id, nama_menu, harga, gambar_menu, deskripsi
+    `SELECT
+       id,
+       COALESCE(foto_menu, gambar_menu) AS gambar_menu,
+       nama_menu,
+       deskripsi,
+       harga,
+       estimasi_menit,
+       status_tersedia,
+       kios_id
      FROM menu
      WHERE kios_id = $1
      ORDER BY id DESC`,
     [kiosId]
   );
-  return { status: 200, body: { message: 'OK', data: result.rows } };
+  return { status: 200, body: result.rows }; // ← array langsung
 }
+
+/* ===================== PENJUAL (tetap berstruktur) ===================== */
 
 // profile kios (penjual)
 async function getKiosByPenjualService(req) {
@@ -189,7 +199,7 @@ async function updateKiosService(req) {
     [updatedNama, updatedDeskripsi, updatedNomorRek, updatedNamaBank, gambarUrl, kiosId]
   );
 
-  // FE memang mengharapkan row langsung (versi lama pakai res.json(result.rows[0]))
+  // FE penjual memang mengharapkan row langsung
   return { status: 200, body: result.rows[0] };
 }
 

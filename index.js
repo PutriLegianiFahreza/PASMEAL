@@ -6,8 +6,6 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const compression = require('compression');
-const rateLimit = require('express-rate-limit');
 const serverless = require('serverless-http');
 const path = require('path');
 
@@ -15,56 +13,59 @@ const app = express();
 
 /* ---------- Core security & infra middleware ---------- */
 app.set('trust proxy', 1);
-app.use(helmet());
-app.use(compression());
 
-// ==== CORS Setup ====
-// Domain FE utama
+// Izinkan load asset lintas origin (gambar, dsb)
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
+
+app.use(express.json({ limit: '1mb' }));
+
+/* ---------- CORS ---------- */
+// Hardcode domain FE + dukung ENV (CORS_ORIGINS="https://a.com,https://b.com")
 const STATIC_ORIGINS = [
-  'https://pas-meal.vercel.app',       // FE utama
+  'https://pas-meal.vercel.app',       // FE penjual
   'https://pas-meal-2rlb.vercel.app',  // FE pembeli
-  'http://localhost:5173',             // vite dev
-  'http://localhost:3000'              // react dev
+  'http://localhost:5173',
+  'http://localhost:3000',
 ];
 
-// Dari .env kalau ada (CORS_ORIGINS="https://foo.com,https://bar.com")
 const ENV_ORIGINS = (process.env.CORS_ORIGINS || '')
   .split(',')
   .map(s => s.trim())
   .filter(Boolean);
 
-const ALLOW_ORIGINS = [...new Set([...STATIC_ORIGINS, ...ENV_ORIGINS])];
+// Pola untuk semua preview Vercel dari project yang sama (opsional)
+const allowByPattern = (origin = '') =>
+  /^https:\/\/pas-meal(-[a-z0-9-]+)?\.vercel\.app$/.test(origin);
 
-app.use(cors({
-  origin: (origin, cb) => {
-    // izinkan Postman/cURL (origin null) & daftar white-list
-    if (!origin || ALLOW_ORIGINS.includes(origin)) return cb(null, true);
-    return cb(new Error(`Not allowed by CORS: ${origin}`));
-  },
-  credentials: true
-}));
+const ALLOW_ORIGINS = new Set([...STATIC_ORIGINS, ...ENV_ORIGINS]);
 
-// ==== Body parser ====
-app.use(express.json({ limit: '1mb' }));
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true); // Postman/cURL
+      if (ALLOW_ORIGINS.has(origin) || allowByPattern(origin)) return cb(null, true);
+      return cb(new Error(`Not allowed by CORS: ${origin}`));
+    },
+    // credentials: false, // default; jangan true kalau tidak pakai cookie
+  })
+);
 
-// ==== Request logger ====
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
-
-// ==== Rate limiter ====
-app.use(rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
-  standardHeaders: true,
-  legacyHeaders: false
-}));
-
-// Debug rute (opsional)
-app.use((req, res, next) => {
-  if (process.env.NODE_ENV !== 'production') {
-    console.log(`[${req.method}] ${req.originalUrl}`);
-  }
-  next();
-});
+// Debug request ringkas
+app.use(
+  morgan((tokens, req, res) =>
+    [
+      tokens.method(req, res),
+      tokens.url(req, res),
+      tokens.status(req, res),
+      `origin=${req.headers.origin || '-'}`,
+      tokens['response-time'](req, res), 'ms',
+    ].join(' ')
+  )
+);
 
 /* -------------------------- Routes -------------------------- */
 const authRoutes = require('./routes/authRoutes');
@@ -77,9 +78,13 @@ const pesananRoutes = require('./routes/pesananRoutes');
 const midtransRoutes = require('./routes/midtransRoutes');
 const penjualRoutes = require('./routes/penjualRoutes');
 
+// Healthcheck
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+// Static files (foto)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Prefix rute
 app.use('/api', authRoutes);
 app.use('/api/kios', kiosRoutes);
 app.use('/api/menu', menuRoutes);
@@ -90,6 +95,7 @@ app.use('/api', pesananRoutes);
 app.use('/api/midtrans', midtransRoutes);
 app.use('/api/penjual', penjualRoutes);
 
+// Root
 app.get('/', (req, res) => {
   res.send('PasMeal API Backend is running...');
 });
@@ -105,12 +111,13 @@ app.use(errorHandler);
 module.exports = app;
 module.exports.handler = serverless(app);
 
+// LOCAL only (bukan serverless)
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 
-    // WhatsApp service (hanya di local/server non-serverless)
+    // Opsional: start WhatsApp service
     setImmediate(async () => {
       try {
         const { connectToWhatsApp } = require('./services/whatsapp');

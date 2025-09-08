@@ -1,4 +1,4 @@
-// controllers/menuController.js (thin controller)
+// controllers/menuController.js
 const {
   getAllMenuService,
   addMenuService,
@@ -11,12 +11,15 @@ const {
   searchMenusByKiosService,
   getMenuByIdForBuyerService,
 } = require('../services/menuService');
+const fs = require('fs');
+
+/* ====================== PENJUAL ====================== */
 
 // Ambil semua menu (penjual)
 const getAllMenu = async (req, res) => {
   try {
     const { status, body } = await getAllMenuService(req);
-    return res.status(status).json(body);
+    return res.status(status).json(body); // array menu penjual
   } catch (error) {
     return res.status(500).json({ message: 'Gagal mengambil menu', error: error.message });
   }
@@ -26,22 +29,19 @@ const getAllMenu = async (req, res) => {
 const addMenu = async (req, res) => {
   try {
     const { status, body } = await addMenuService(req);
-    return res.status(status).json(body);
+    return res.status(status).json(body); // { message, data }
   } catch (error) {
-    // cloudinary/file cleanup sudah di-handle di service; tetap balas seperti sebelumnya
-    // eslint-disable-next-line no-console
     console.error(error);
     return res.status(500).json({ message: 'Terjadi kesalahan server', error: error.message });
   }
 };
 
-// Update menu
+// Update menu (penjual)
 const updateMenu = async (req, res) => {
   try {
     const { status, body } = await updateMenuService(req);
-    return res.status(status).json(body);
+    return res.status(status).json(body); // { message, menu }
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error(err);
     if (req.file) {
       try { fs.unlinkSync(req.file.path); } catch (_) {}
@@ -55,7 +55,7 @@ const updateMenu = async (req, res) => {
 const getMenuById = async (req, res) => {
   try {
     const { status, body } = await getMenuByIdService(req);
-    return res.status(status).json(body);
+    return res.status(status).json(body); // row tunggal
   } catch (error) {
     if (error.status) return res.status(error.status).json({ message: error.message });
     return res.status(500).json({ message: 'Gagal mengambil detail menu', error: error.message });
@@ -66,7 +66,7 @@ const getMenuById = async (req, res) => {
 const deleteMenu = async (req, res) => {
   try {
     const { status, body } = await deleteMenuService(req);
-    return res.status(status).json(body);
+    return res.status(status).json(body); // { message }
   } catch (error) {
     if (error.status) return res.status(error.status).json({ message: error.message });
     return res.status(500).json({ message: 'Gagal menghapus menu', error: error.message });
@@ -77,49 +77,51 @@ const deleteMenu = async (req, res) => {
 const getMenusPaginated = async (req, res) => {
   try {
     const { status, body } = await getMenusPaginatedService(req);
-    return res.status(status).json(body);
+    return res.status(status).json(body); // { page, limit, total, data }
   } catch (err) {
     return res.status(500).json({ message: 'Gagal mengambil menu', error: err.message });
   }
 };
 
-// Ambil 5 menu terbaru (pembeli)
+/* ====================== PEMBELI ====================== */
+
+// Ambil 5 menu terbaru (pembeli) → array langsung
 const getNewMenus = async (req, res) => {
   try {
-    const { status, body } = await getNewMenusService();
-    return res.status(status).json(body);
+    const { status, rows } = await getNewMenusService();
+    return res.status(status).json(rows); // ← array []
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 };
 
-// Cari menu (pembeli)
+// Cari menu (pembeli) → array langsung
 const searchMenus = async (req, res) => {
   try {
     const { status, body } = await searchMenusService(req);
-    return res.status(status).json(body);
+    return res.status(status).json(body); // ← array []
   } catch (err) {
     if (err.status) return res.status(err.status).json({ message: err.message });
     return res.status(500).json({ error: err.message });
   }
 };
 
-// Cari menu di kios tertentu (pembeli)
+// Cari menu di kios tertentu (pembeli) → array langsung
 const searchMenusByKios = async (req, res) => {
   try {
     const { status, body } = await searchMenusByKiosService(req);
-    return res.status(status).json(body);
+    return res.status(status).json(body); // ← array []
   } catch (err) {
     if (err.status) return res.status(err.status).json({ message: err.message });
     return res.status(500).json({ error: err.message });
   }
 };
 
-// Detail menu (pembeli)
+// Detail menu (pembeli) → object tunggal
 const getMenuByIdForBuyer = async (req, res) => {
   try {
     const { status, body } = await getMenuByIdForBuyerService(req);
-    return res.status(status).json(body);
+    return res.status(status).json(body); // ← row object
   } catch (error) {
     if (error.status) return res.status(error.status).json({ message: error.message });
     return res.status(500).json({ message: 'Gagal mengambil detail menu', error: error.message });
@@ -132,9 +134,9 @@ module.exports = {
   updateMenu,
   getMenuById,
   deleteMenu,
+  getMenusPaginated,
   getNewMenus,
   searchMenus,
   searchMenusByKios,
   getMenuByIdForBuyer,
-  getMenusPaginated
 };

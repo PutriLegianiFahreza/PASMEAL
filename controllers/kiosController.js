@@ -1,4 +1,4 @@
-// controllers/kiosController.js (thin controller)
+// controllers/kiosController.js
 const {
   createKiosService,
   getKiosHomepageService,
@@ -10,11 +10,11 @@ const {
   getKiosDetailService,
 } = require('../services/kiosService');
 
-// registrasi kios penjual
+// REGISTRASI KIOS (penjual)
 const createKios = async (req, res) => {
   try {
     const { status, body } = await createKiosService(req);
-    return res.status(status).json(body);
+    return res.status(status).json(body); // objek { message, data }
   } catch (err) {
     if (err.status) return res.status(err.status).json({ message: err.message });
     console.error(err);
@@ -22,47 +22,51 @@ const createKios = async (req, res) => {
   }
 };
 
-// MENAMPILKAN 8 KIOS DI HOMEPAGE (pembeli)
+/* ====================== PEMBELI ====================== */
+
+// HOMEPAGE (8 kios) → array langsung
 const getKiosHomepage = async (req, res) => {
   try {
     const { status, body } = await getKiosHomepageService();
-    return res.status(status).json(body);
+    return res.status(status).json(body); // array []
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 };
 
-// SEARCH KIOS (pembeli)
+// SEARCH kios → array langsung
 const searchKios = async (req, res) => {
   try {
     const { status, body } = await searchKiosService(req);
-    return res.status(status).json(body);
+    return res.status(status).json(body); // array []
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 };
 
-// Ambil semua kios (pembeli)
+// ALL kios → array langsung
 const getAllKios = async (req, res) => {
   try {
     const { status, body } = await getAllKiosService();
-    return res.status(status).json(body);
+    return res.status(status).json(body); // array []
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 };
 
-// Ambil menu berdasarkan kios (pembeli)
+// MENUS by kios → array langsung
 const getMenusByKios = async (req, res) => {
   try {
-    const { status, body } = await getMenusByKiosService(req);
-    return res.status(status).json(body);
+    const { status, body } = await getMenusByKiosService(req.params.id);
+    return res.status(status).json(body); // array []
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 };
 
-// profile kios (penjual)
+/* ====================== PENJUAL ====================== */
+
+// PROFILE kios (penjual) → objek { message, data }
 const getKiosByPenjual = async (req, res) => {
   try {
     const { status, body } = await getKiosByPenjualService(req);
@@ -74,7 +78,7 @@ const getKiosByPenjual = async (req, res) => {
   }
 };
 
-// UPDATE PROFILE KIOS (penjual)
+// UPDATE kios (penjual) → objek row langsung
 const updateKios = async (req, res) => {
   try {
     const { status, body } = await updateKiosService(req);
@@ -86,7 +90,7 @@ const updateKios = async (req, res) => {
   }
 };
 
-// Ambil detail kios berdasarkan kios_id (pembeli)
+// DETAIL kios (pembeli) → objek { message, data }
 const getKiosDetail = async (req, res) => {
   try {
     const { status, body } = await getKiosDetailService(req);
@@ -98,13 +102,13 @@ const getKiosDetail = async (req, res) => {
   }
 };
 
-module.exports = { 
+module.exports = {
   createKios,
   getKiosHomepage,
   searchKios,
   getAllKios,
   getMenusByKios,
+  getKiosByPenjual,
   updateKios,
-  getKiosByPenjual, 
-  getKiosDetail
+  getKiosDetail,
 };
