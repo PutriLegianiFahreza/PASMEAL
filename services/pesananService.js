@@ -341,6 +341,7 @@ async function getDetailPesananService(req) {
 }
 
 // --- Pesanan masuk untuk penjual (kalkulasi kumulatif, style baru) ---
+// --- Pesanan masuk untuk penjual (kalkulasi kumulatif, pakai detik + server_time) ---
 async function getPesananMasukService(req) {
   const penjualId = Number(req.user.id || req.user.penjual_id);
   if (isNaN(penjualId)) throw httpErr(400, 'User ID tidak valid');
@@ -352,48 +353,54 @@ async function getPesananMasukService(req) {
   // Hitung kumulatif per-kios langsung di SQL
   const rows = (await pool.query(
     `
-   WITH aktif AS (
-  SELECT
-    p.*,
-    COALESCE(p.waktu_proses_mulai, p.paid_at, p.created_at) AS anchor_time
-  FROM pesanan p
-  WHERE p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
-    AND LOWER(p.status) IN ('paid','processing','ready','delivering')
-),
-urut AS (
-  SELECT
-    a.*,
-    ROW_NUMBER() OVER (
-      PARTITION BY a.kios_id
-      ORDER BY a.anchor_time ASC, a.id ASC
-    ) AS nomor_antrian_kios,
+    WITH aktif AS (
+      SELECT
+        p.*,
+        COALESCE(p.waktu_proses_mulai, p.paid_at, p.created_at) AS anchor_time
+      FROM pesanan p
+      WHERE p.kios_id IN (SELECT id FROM kios WHERE penjual_id = $1)
+        AND LOWER(p.status) IN ('paid','processing','ready','delivering')
+    ),
+    urut AS (
+      SELECT
+        a.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY a.kios_id
+          ORDER BY a.anchor_time ASC, a.id ASC
+        ) AS nomor_antrian_kios,
+        -- kumulasi total_estimasi (menit) per kios
+        SUM(COALESCE(a.total_estimasi,0)) OVER (
+          PARTITION BY a.kios_id
+          ORDER BY a.anchor_time ASC, a.id ASC
+          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS cum_estimasi_menit
+      FROM aktif a
+    )
+    SELECT
+      u.id, u.kios_id, u.nama_pemesan, u.no_hp, u.total_harga, u.status,
+      u.payment_type, u.tipe_pengantaran, u.diantar_ke,
+      u.paid_at, u.created_at, COALESCE(u.total_estimasi,0) AS total_estimasi,
+      u.waktu_proses_mulai,
+      u.anchor_time,
+      u.nomor_antrian_kios,
 
-    -- kumulasi total_estimasi (menit) per kios
-    SUM(COALESCE(a.total_estimasi,0)) OVER (
-      PARTITION BY a.kios_id
-      ORDER BY a.anchor_time ASC, a.id ASC
-      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-    ) AS cum_estimasi_menit
-  FROM aktif a
-)
-SELECT
-  u.id, u.kios_id, u.nama_pemesan, u.no_hp, u.total_harga, u.status,
-  u.payment_type, u.tipe_pengantaran, u.diantar_ke,
-  u.paid_at, u.created_at, COALESCE(u.total_estimasi,0) AS total_estimasi,
-  u.waktu_proses_mulai,
-  u.anchor_time,
-  u.nomor_antrian_kios,
+      -- estimasi selesai (timestamp)
+      (u.anchor_time + (u.cum_estimasi_menit * INTERVAL '1 minute')) AS estimasi_selesai_at_calc,
 
-  -- ✅ pakai INTERVAL * bigint
-  (u.anchor_time + (u.cum_estimasi_menit * INTERVAL '1 minute')) AS estimasi_selesai_at_calc,
+      -- sisa waktu dalam MENIT (kompat lama)
+      GREATEST(
+        0,
+        EXTRACT(EPOCH FROM ((u.anchor_time + (u.cum_estimasi_menit * INTERVAL '1 minute')) - NOW()))::bigint
+      ) / 60.0 AS eta_menit_kumulatif,
 
-  GREATEST(
-    0,
-    EXTRACT(EPOCH FROM ((u.anchor_time + (u.cum_estimasi_menit * INTERVAL '1 minute')) - NOW()))::bigint
-  ) / 60 AS eta_menit_kumulatif
-FROM urut u
-ORDER BY u.kios_id ASC, u.anchor_time ASC, u.id ASC
-LIMIT $2 OFFSET $3
+      -- ✅ sisa waktu dalam DETIK (baru, untuk Timer)
+      GREATEST(
+        0,
+        EXTRACT(EPOCH FROM ((u.anchor_time + (u.cum_estimasi_menit * INTERVAL '1 minute')) - NOW()))::bigint
+      ) AS eta_detik_kumulatif
+    FROM urut u
+    ORDER BY u.kios_id ASC, u.anchor_time ASC, u.id ASC
+    LIMIT $2 OFFSET $3
     `,
     [penjualId, limit, offset]
   )).rows;
@@ -409,6 +416,8 @@ LIMIT $2 OFFSET $3
   const total = countRes.rows[0].total;
   const totalPages = Math.ceil(total / limit);
 
+  const nowIso = new Date().toISOString();
+
   const data = rows.map(row => ({
     id: row.id,
     nomor_antrian: row.nomor_antrian_kios, // nomor dalam kios tsb
@@ -422,16 +431,21 @@ LIMIT $2 OFFSET $3
     total_harga: Number(row.total_harga),
     total_estimasi: Number(row.total_estimasi), // durasi order itu sendiri
 
-    // ✅ ini yang dipakai UI untuk “waktu estimasi” kumulatif
+    // ⬇️ bahan UI
     estimasi_selesai_at: row.estimasi_selesai_at_calc
       ? new Date(row.estimasi_selesai_at_calc).toISOString()
       : null,
+
+    // kompatibilitas lama (menit, dibulatkan ke atas)
     eta_menit_kumulatif: Math.ceil(Number(row.eta_menit_kumulatif || 0)),
+
+    // ✅ yang dipakai Timer FE (detik)
+    eta_seconds_kumulatif: Math.max(0, Number(row.eta_detik_kumulatif || 0)),
 
     status: getStatusLabel(row.tipe_pengantaran, row.status),
   }));
 
-  return { status: 200, body: { page, totalPages, limit, total, data } };
+  return { status: 200, body: { page, totalPages, limit, total, data, server_time: nowIso } };
 }
 
 // --- Detail pesanan masuk (jadwal kumulatif, style baru) ---
