@@ -87,34 +87,52 @@ Promise.resolve()
 
 // MENAMPILKAN 8 KIOS DI HOMEPAGE (pembeli)
 async function getKiosHomepageService() {
-  const result = await pool.query('SELECT * FROM kios ORDER BY created_at DESC LIMIT 8');
-  return { status: 200, body: result.rows };
+  const result = await pool.query(
+    `SELECT id, nama_kios, deskripsi, gambar_kios
+     FROM kios
+     ORDER BY id DESC
+     LIMIT 8`
+  );
+  return { status: 200, body: { message: 'OK', data: result.rows } };
 }
 
 // SEARCH KIOS (pembeli)
 async function searchKiosService(req) {
   const { query } = req.query;
+  if (!query || query.trim() === '') {
+    return { status: 200, body: { message: 'OK', data: [] } };
+  }
   const result = await pool.query(
-    'SELECT * FROM kios WHERE LOWER(nama_kios) LIKE LOWER($1)',
+    `SELECT id, nama_kios, deskripsi, gambar_kios
+     FROM kios
+     WHERE LOWER(nama_kios) LIKE LOWER($1)
+     ORDER BY id DESC`,
     [`%${query}%`]
   );
-  return { status: 200, body: result.rows };
+  return { status: 200, body: { message: 'OK', data: result.rows } };
 }
 
 // Ambil semua kios (pembeli)
 async function getAllKiosService() {
-  const result = await pool.query('SELECT * FROM kios ORDER BY created_at DESC');
-  return { status: 200, body: result.rows };
+  const result = await pool.query(
+    `SELECT id, nama_kios, deskripsi, gambar_kios
+     FROM kios
+     ORDER BY id DESC`
+  );
+  return { status: 200, body: { message: 'OK', data: result.rows } };
 }
 
 // Ambil menu berdasarkan kios (pembeli)
 async function getMenusByKiosService(req) {
   const kiosId = req.params.id;
   const result = await pool.query(
-    'SELECT * FROM menu WHERE kios_id = $1 ORDER BY created_at DESC',
+    `SELECT id, nama_menu, harga, gambar_menu, deskripsi
+     FROM menu
+     WHERE kios_id = $1
+     ORDER BY id DESC`,
     [kiosId]
   );
-  return { status: 200, body: result.rows };
+  return { status: 200, body: { message: 'OK', data: result.rows } };
 }
 
 // profile kios (penjual)

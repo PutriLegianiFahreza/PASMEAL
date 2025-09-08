@@ -213,9 +213,19 @@ async function getMenusPaginatedService(req) {
 /* === Ambil 5 menu terbaru (pembeli) === */
 async function getNewMenusService() {
   const result = await pool.query(
-    'SELECT id, foto_menu, nama_menu, deskripsi, harga, estimasi_menit, status_tersedia FROM menu ORDER BY created_at DESC LIMIT 5'
+    `SELECT
+       id,
+       foto_menu AS gambar_menu,   -- samakan dengan yang dipakai FE
+       nama_menu,
+       deskripsi,
+       harga,
+       estimasi_menit,
+       status_tersedia
+     FROM menu
+     ORDER BY id DESC
+     LIMIT 5`
   );
-  return { status: 200, body: result.rows };
+  return { status: 200, body: { message: 'OK', data: result.rows } };
 }
 
 /* === Cari menu (pembeli) === */
