@@ -182,7 +182,7 @@ async function buatPesananService(req) {
   }
 }
 
-// --- Status pesanan untuk guest (timer baru aktif setelah diproses; sebelum itu hanya estimasi giliran) ---
+// --- Status pesanan untuk guest (fix: no-dup target, anchor proses pakai waktu_proses_mulai/now) ---
 async function getStatusPesananGuestService(req) {
   const pesananId = parseInt(req.params.id, 10);
   const guest_id = getGuestId(req);
@@ -199,15 +199,16 @@ async function getStatusPesananGuestService(req) {
   );
   if (!tRes.rows.length) throw httpErr(404, 'Pesanan tidak ditemukan');
   const t = tRes.rows[0];
-
-  // Flag: sudah mulai diproses?
   const statusLower = (t.status || '').toLowerCase();
+
   const sudahMulaiDiproses =
     ['processing','ready','delivering'].includes(statusLower) || !!t.waktu_proses_mulai;
 
-  // CTE:
-  // - "aktif": hanya order yang SUDAH diproses -> mempengaruhi timer utama
-  // - "tambah_target": selipkan target (apa pun statusnya) agar dapat planned start (giliran)
+  // Catatan:
+  // - aktif: hanya yang benar2 diproses (serial queue yang berjalan)
+  // - tambah_target: masukkan target sekali saja (hindari duplikat); anchor:
+  //     * kalau target sudah diproses -> pakai waktu_proses_mulai (fallback NOW())
+  //     * kalau belum -> pakai created_at (menunggu)
   const etaRowRes = await pool.query(
     `
     WITH aktif AS (
@@ -217,29 +218,32 @@ async function getStatusPesananGuestService(req) {
         COALESCE(p.total_estimasi,0) AS total_estimasi
       FROM pesanan p
       WHERE p.kios_id = $1
-        AND LOWER(p.status) IN ('processing','ready','delivering')  -- paid DIHAPUS: timer utama hanya utk yang sudah diproses
+        AND LOWER(p.status) IN ('processing','ready','delivering')
     ),
     tambah_target AS (
       SELECT * FROM aktif
       UNION ALL
       SELECT
-        p.id, p.kios_id,
-        COALESCE(p.waktu_proses_mulai, p.paid_at, p.created_at) AS anchor_time,
+        p.id,
+        p.kios_id,
+        CASE
+          WHEN LOWER(p.status) IN ('processing','ready','delivering')
+            THEN COALESCE(p.waktu_proses_mulai, NOW())   -- <- pastikan start timer dari proses
+          ELSE p.created_at                               -- pending/paid: belum mulai, pakai created_at
+        END AS anchor_time,
         COALESCE(p.total_estimasi,0) AS total_estimasi
       FROM pesanan p
       WHERE p.id = $2
-        AND LOWER(p.status) IN ('pending','paid','processing','ready','delivering')
+        AND NOT EXISTS (SELECT 1 FROM aktif a WHERE a.id = p.id)  -- <- cegah duplikat target
     ),
     urut AS (
       SELECT
         a.*,
         ROW_NUMBER() OVER (ORDER BY a.anchor_time ASC, a.id ASC) AS rn,
-        -- kumulatif termasuk baris saat ini (untuk finish)
         SUM(a.total_estimasi) OVER (
           ORDER BY a.anchor_time ASC, a.id ASC
           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         ) AS cum_estimasi_menit,
-        -- kumulatif sebelum baris saat ini (untuk start)
         COALESCE(
           LAG(
             SUM(a.total_estimasi) OVER (
@@ -259,14 +263,14 @@ async function getStatusPesananGuestService(req) {
       u.cum_before_menit,
       (u.anchor_time + (u.cum_before_menit * INTERVAL '1 minute')) AS start_at_calc,
       (u.anchor_time + (u.cum_estimasi_menit * INTERVAL '1 minute')) AS estimasi_selesai_at_calc,
-      -- ETA (selesai) utk timer utama
+      -- countdown utama sampai selesai
       GREATEST(
         0,
         EXTRACT(EPOCH FROM (
           (u.anchor_time + (u.cum_estimasi_menit * INTERVAL '1 minute')) - NOW()
         ))::bigint
       ) AS eta_detik,
-      -- Planned wait (menuju mulai dikerjakan)
+      -- planned wait sampai MULAI dikerjakan
       GREATEST(
         0,
         EXTRACT(EPOCH FROM (
@@ -280,7 +284,6 @@ async function getStatusPesananGuestService(req) {
     [t.kios_id, pesananId]
   );
 
-  // Kalau antrean tidak ketemu (sangat jarang), kembalikan default minimal
   if (!etaRowRes.rows.length) {
     return {
       status: 200,
@@ -294,7 +297,8 @@ async function getStatusPesananGuestService(req) {
         planned_wait_minutes: 0,
         planned_start_at: null,
         server_time: new Date().toISOString(),
-        eta_at: null
+        eta_at: null,
+        debug: { note: 'queue-empty' }
       }
     };
   }
@@ -311,42 +315,44 @@ async function getStatusPesananGuestService(req) {
   let planned_wait_seconds = Math.max(0, Number(etaRow.planned_wait_detik || 0));
   let planned_wait_minutes = Math.ceil(planned_wait_seconds / 60);
 
-  // Matikan countdown utama jika BELUM diproses; gunakan planned wait saja
   let is_timer_active = false;
   if (!sudahMulaiDiproses) {
+    // Belum mulai: nonaktifkan countdown utama, pakai planned wait
     estimasi_selesai_at = null;
     remaining_seconds = 0;
     remaining_minutes = 0;
     is_timer_active = false;
   } else {
-    // Sudah diproses: planned tidak relevan
+    // Sudah mulai: countdown aktif, planned tidak relevan
     planned_wait_seconds = 0;
     planned_wait_minutes = 0;
     planned_start_at = null;
     is_timer_active = true;
   }
 
-  // Tidak ada lagi override status untuk FE lama
   const statusForFE = t.status;
 
   return {
     status: 200,
     body: {
       status: statusForFE,
-
-      // Timer utama (aktif jika sudah diproses)
       is_timer_active,
       estimasi_selesai_at,
       remaining_seconds,
       remaining_minutes,
-
-      // Estimasi giliran (hanya saat pending/paid)
       planned_wait_seconds,
       planned_wait_minutes,
       planned_start_at,
-
       server_time: new Date().toISOString(),
-      eta_at: estimasi_selesai_at // kompat lama
+      eta_at: estimasi_selesai_at,
+      // Debug ringan agar gampang tracing saat dev
+      debug: {
+        statusLower,
+        waktu_proses_mulai: t.waktu_proses_mulai,
+        anchor_time_used: etaRow.anchor_time,
+        cum_before_menit: etaRow.cum_before_menit,
+        cum_estimasi_menit: etaRow.cum_estimasi_menit
+      }
     }
   };
 }
