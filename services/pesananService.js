@@ -518,10 +518,12 @@ async function countPesananMasukService(req) {
 }
 
 // --- Update status pesanan ---
+// --- Update status pesanan ---
 async function updateStatusPesananService(req) {
   const { id } = req.params;
   const { status } = req.body;
   const penjualId = req.user.id;
+
   const allowedStatuses = ['pending', 'paid', 'processing', 'ready', 'delivering', 'done'];
   if (!allowedStatuses.includes(status)) throw httpErr(400, 'Status tidak valid');
 
@@ -529,15 +531,21 @@ async function updateStatusPesananService(req) {
   try {
     await client.query('BEGIN');
 
+    // pastikan pesanan milik kios si penjual
     const pesananTargetRes = await client.query(
-      `SELECT p.* FROM pesanan p
-       JOIN kios k ON p.kios_id = k.id
-       WHERE p.id = $1 AND k.penjual_id = $2`,
+      `SELECT p.*
+         FROM pesanan p
+         JOIN kios k ON p.kios_id = k.id
+        WHERE p.id = $1 AND k.penjual_id = $2
+        LIMIT 1`,
       [id, penjualId]
     );
-    if (!pesananTargetRes.rows.length) throw httpErr(404, 'Pesanan tidak ditemukan atau Anda tidak memiliki akses');
+    if (!pesananTargetRes.rows.length)
+      throw httpErr(404, 'Pesanan tidak ditemukan atau Anda tidak memiliki akses');
+
     const pesananTarget = pesananTargetRes.rows[0];
 
+    // transisi khusus ke PROCESSING (set jadwal serial)
     if (status === 'processing') {
       if (pesananTarget.waktu_proses_mulai) {
         await client.query('COMMIT');
@@ -552,48 +560,67 @@ async function updateStatusPesananService(req) {
             NOW(),
             COALESCE(MAX(estimasi_selesai_at), NOW())
           ) AS start_at
-         FROM pesanan
-         WHERE kios_id = $1
-           AND status IN ('processing','ready','delivering')`,
+           FROM pesanan
+          WHERE kios_id = $1
+            AND status IN ('processing','ready','delivering')`,
         [pesananTarget.kios_id]
       );
       const startAt = startRow.rows[0].start_at;
 
-      const result = await client.query(
+      const upd = await client.query(
         `UPDATE pesanan
-         SET status = 'processing',
-             waktu_proses_mulai = $1,
-             estimasi_mulai_at  = $1,
-             estimasi_selesai_at = $1 + ($2 || ' minutes')::interval,
-             delayed = false
-         WHERE id = $3
-           AND kios_id = $4
-         RETURNING *`,
+            SET status = 'processing',
+                waktu_proses_mulai = $1,
+                estimasi_mulai_at  = $1,
+                estimasi_selesai_at = $1 + ($2 * INTERVAL '1 minute'),
+                delayed = false
+          WHERE id = $3
+            AND kios_id = $4
+        RETURNING *`,
         [startAt, menit, id, pesananTarget.kios_id]
       );
 
       await client.query('COMMIT');
-      return { status: 200, body: { message: 'Status berhasil diperbarui', pesanan: result.rows[0] } };
+      return { status: 200, body: { message: 'Status berhasil diperbarui', pesanan: upd.rows[0] } };
     }
 
-    // status lain
-    const result = await client.query(
-      `UPDATE pesanan
-       SET status = $1
-       WHERE id = $2
-         AND kios_id = $3
-       RETURNING *`,
-      [status, id, pesananTarget.kios_id]
-    );
+    // transisi status lain (paid/ready/delivering/done/pending)
+    let upd;
+    if (status === 'paid') {
+      // isi paid_at jika belum ada (penting untuk antrian & ETA)
+      upd = await client.query(
+        `UPDATE pesanan
+            SET status = 'paid',
+                paid_at = COALESCE(paid_at, NOW())
+          WHERE id = $1
+            AND kios_id = $2
+        RETURNING *`,
+        [id, pesananTarget.kios_id]
+      );
+    } else {
+      upd = await client.query(
+        `UPDATE pesanan
+            SET status = $1
+          WHERE id = $2
+            AND kios_id = $3
+        RETURNING *`,
+        [status, id, pesananTarget.kios_id]
+      );
+    }
+
+    if (!upd.rows.length) throw httpErr(404, 'Pesanan tidak ditemukan untuk diperbarui');
 
     if (status === 'done') {
-      notifyPembeliPesananSelesaiService(id).catch(err => console.error('Gagal kirim notifikasi pembeli:', err));
+      // kirim notif pembeli, fire-and-forget
+      notifyPembeliPesananSelesaiService(id).catch(err =>
+        console.error('Gagal kirim notifikasi pembeli:', err)
+      );
     }
 
     await client.query('COMMIT');
-    return { status: 200, body: { message: 'Status berhasil diperbarui', pesanan: result.rows[0] } };
+    return { status: 200, body: { message: 'Status berhasil diperbarui', pesanan: upd.rows[0] } };
   } catch (err) {
-    await (async () => { try { await client.query('ROLLBACK'); } catch (_) {} })();
+    try { await client.query('ROLLBACK'); } catch (_) {}
     if (err.status) throw err;
     console.error('Error in updateStatusPesananService:', err);
     throw httpErr(500, 'Terjadi kesalahan server');
@@ -601,7 +628,6 @@ async function updateStatusPesananService(req) {
     client.release();
   }
 }
-
 
 // --- Riwayat pesanan (done) ---
 async function getRiwayatPesananService(req) {
