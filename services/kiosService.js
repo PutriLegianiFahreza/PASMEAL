@@ -124,11 +124,12 @@ async function getAllKiosService() {
 }
 
 // Ambil menu berdasarkan kios (pembeli)
+// Ambil menu berdasarkan kios (pembeli)
 async function getMenusByKiosService(kiosId) {
   const result = await pool.query(
     `SELECT
        id,
-       COALESCE(foto_menu, gambar_menu) AS gambar_menu,
+       foto_menu,
        nama_menu,
        deskripsi,
        harga,
@@ -137,11 +138,12 @@ async function getMenusByKiosService(kiosId) {
        kios_id
      FROM menu
      WHERE kios_id = $1
-     ORDER BY id DESC`,
+     ORDER BY created_at DESC`,
     [kiosId]
   );
-  return { status: 200, body: result.rows }; // ← array langsung
+  return { status: 200, body: result.rows }; // array langsung
 }
+
 
 /* ===================== PENJUAL (tetap berstruktur) ===================== */
 
