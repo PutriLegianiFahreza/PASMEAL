@@ -1,6 +1,6 @@
 // index.js
 require('dotenv').config();
-require('express-async-errors'); // biar throw di async otomatis ke error handler
+require('express-async-errors');
 
 const express = require('express');
 const cors = require('cors');
@@ -14,40 +14,51 @@ const path = require('path');
 const app = express();
 
 /* ---------- Core security & infra middleware ---------- */
-app.set('trust proxy', 1); // penting kalau di belakang proxy (Vercel/Render/Nginx)
-app.use(helmet());         // header keamanan
-app.use(compression());    // kompresi respons
+app.set('trust proxy', 1);
+app.use(helmet());
+app.use(compression());
 
-// CORS: batasi ke domain FE kamu. Tambah/ubah jika perlu.
-const ALLOW_ORIGINS = [
-  'https://pas-meal.vercel.app',
-  process.env.CORS_ORIGIN // opsional dari env
-].filter(Boolean);
+// ==== CORS Setup ====
+// Domain FE utama
+const STATIC_ORIGINS = [
+  'https://pas-meal.vercel.app',       // FE utama
+  'https://pas-meal-2rlb.vercel.app',  // FE pembeli
+  'http://localhost:5173',             // vite dev
+  'http://localhost:3000'              // react dev
+];
+
+// Dari .env kalau ada (CORS_ORIGINS="https://foo.com,https://bar.com")
+const ENV_ORIGINS = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+const ALLOW_ORIGINS = [...new Set([...STATIC_ORIGINS, ...ENV_ORIGINS])];
 
 app.use(cors({
   origin: (origin, cb) => {
-    // izinkan tools lokal/postman (origin null) & daftar white-list
+    // izinkan Postman/cURL (origin null) & daftar white-list
     if (!origin || ALLOW_ORIGINS.includes(origin)) return cb(null, true);
-    return cb(new Error('Not allowed by CORS'));
+    return cb(new Error(`Not allowed by CORS: ${origin}`));
   },
   credentials: true
 }));
 
-// Body parser
+// ==== Body parser ====
 app.use(express.json({ limit: '1mb' }));
 
-// Request logger (ringkas di prod, lengkap di dev)
+// ==== Request logger ====
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
-// Rate limit global (longgar agar tidak ganggu FE)
+// ==== Rate limiter ====
 app.use(rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 menit
-  max: 1000,                 // 1000 request / IP / 15 menit
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false
 }));
 
-// Debug minimal rute (opsional, boleh dihapus kalau morgan sudah cukup)
+// Debug rute (opsional)
 app.use((req, res, next) => {
   if (process.env.NODE_ENV !== 'production') {
     console.log(`[${req.method}] ${req.originalUrl}`);
@@ -66,13 +77,9 @@ const pesananRoutes = require('./routes/pesananRoutes');
 const midtransRoutes = require('./routes/midtransRoutes');
 const penjualRoutes = require('./routes/penjualRoutes');
 
-// Healthcheck sederhana buat monitoring
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
-
-// Static files (foto)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Prefix rute — tidak diubah agar FE tetap cocok
 app.use('/api', authRoutes);
 app.use('/api/kios', kiosRoutes);
 app.use('/api/menu', menuRoutes);
@@ -83,31 +90,27 @@ app.use('/api', pesananRoutes);
 app.use('/api/midtrans', midtransRoutes);
 app.use('/api/penjual', penjualRoutes);
 
-// Root endpoint
 app.get('/', (req, res) => {
   res.send('PasMeal API Backend is running...');
 });
 
-/* --------------- 404 handler (untuk rute tak dikenal) --------------- */
-app.use((req, res) => {
-  return res.status(404).json({ message: 'Endpoint tidak ditemukan' });
-});
+/* --------------- 404 handler --------------- */
+app.use((req, res) => res.status(404).json({ message: 'Endpoint tidak ditemukan' }));
 
-/* --------------------- Error handler terakhir --------------------- */
+/* ----------------- Error handler ----------------- */
 const errorHandler = require('./middlewares/errorHandler');
 app.use(errorHandler);
 
-/* ----------------- Exports untuk Serverless & Local ---------------- */
+/* ----------------- Exports ----------------- */
 module.exports = app;
 module.exports.handler = serverless(app);
 
-// LOCAL: server listen + WhatsApp background
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 
-    // Start WhatsApp service di background (non-blocking)
+    // WhatsApp service (hanya di local/server non-serverless)
     setImmediate(async () => {
       try {
         const { connectToWhatsApp } = require('./services/whatsapp');
