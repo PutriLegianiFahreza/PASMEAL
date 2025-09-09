@@ -185,8 +185,10 @@ async function buatPesananService(req) {
 // --- Status pesanan untuk guest: timer hanya saat processing/ready/delivering, pakai timestamp persist ---
 async function getStatusPesananGuestService(req) {
   const pesananId = parseInt(req.params.id, 10);
-  const guest_id = getGuestId(req);
+  // ⬇⬇⬇ Fallback ambil dari query ?guest_id= / ?gid=
+  const guest_id = req.query.guest_id || req.query.gid || getGuestId(req);
   if (isNaN(pesananId)) throw httpErr(400, 'ID pesanan tidak valid');
+  if (!guest_id) throw httpErr(401, 'Guest tidak terdeteksi');
 
   // Ambil target
   const tRes = await pool.query(
@@ -196,9 +198,10 @@ async function getStatusPesananGuestService(req) {
        FROM pesanan
       WHERE id = $1 AND guest_id = $2
       LIMIT 1`,
-    [pesananId, guest_id]
+    [pesananId, guest_id]  // ⬅ tetap validasi milik guest tsb
   );
   if (!tRes.rows.length) throw httpErr(404, 'Pesanan tidak ditemukan');
+
   const t = tRes.rows[0];
 
   // === CASE A: sudah diproses / sedang jalan → tampilkan countdown DARI TIMESTAMP PERSIST ===
@@ -210,7 +213,7 @@ async function getStatusPesananGuestService(req) {
     return {
       status: 200,
       body: {
-        status: t.status,                               // TANPA override
+        status: t.status,
         estimasi_selesai_at: new Date(endMs).toISOString(),
         remaining_seconds,
         remaining_minutes: Math.ceil(remaining_seconds / 60),
@@ -221,7 +224,6 @@ async function getStatusPesananGuestService(req) {
   }
 
   // === CASE B: belum diproses (pending/paid) → JANGAN tampilkan countdown ===
-  // opsional: kirim posisi antrean untuk UX
   const anchorTarget = t.waktu_proses_mulai || t.paid_at || t.created_at;
   const aheadRes = await pool.query(
     `
@@ -244,8 +246,8 @@ async function getStatusPesananGuestService(req) {
   return {
     status: 200,
     body: {
-      status: t.status,                // tetap 'pending' atau 'paid'
-      estimasi_selesai_at: null,       // no timer yet
+      status: t.status,
+      estimasi_selesai_at: null,
       remaining_seconds: 0,
       remaining_minutes: 0,
       queue_position,
@@ -253,7 +255,6 @@ async function getStatusPesananGuestService(req) {
     }
   };
 }
-
 
 // --- Daftar pesanan by guest ---
 async function getPesananByGuestService(req) {
