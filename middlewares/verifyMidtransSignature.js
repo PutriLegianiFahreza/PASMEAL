@@ -1,4 +1,3 @@
-// middlewares/verifyMidtransSignature.js
 const crypto = require('crypto');
 
 function sha512(s) {
@@ -14,7 +13,6 @@ module.exports = function verifyMidtransSignature(req, res, next) {
     const sc  = String(status_code ?? '');
     const gaRaw = String(gross_amount ?? '');
 
-    // kandidat gross_amount yang umum dipakai Midtrans
     const candidates = new Set([gaRaw]);
     if (/^\d+(\.\d+)?$/.test(gaRaw)) {
       candidates.add(Number(gaRaw).toFixed(2)); // "20000" -> "20000.00"
@@ -26,15 +24,14 @@ module.exports = function verifyMidtransSignature(req, res, next) {
     const ok = expected.some(x => x === provided);
 
     if (!ok) {
-      // ⇩⇩ kirim info debug di non-prod ⇩⇩
       if (process.env.NODE_ENV !== 'production') {
         return res.status(401).json({
           message: 'Invalid signature',
           debug: {
             inputs: { order_id: oid, status_code: sc, gross_amount: gaRaw },
-            raws,                // string yang server hash
-            expected,            // hash yang server hasilkan dari tiap kandidat
-            provided             // hash yang datang dari Postman
+            raws,                
+            expected,            
+            provided             
           }
         });
       }

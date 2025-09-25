@@ -1,4 +1,3 @@
-// services/keranjangService.js
 const pool = require('../config/db');
 const getGuestId = require('../utils/getGuestId');
 
@@ -8,7 +7,7 @@ const httpErr = (status, message) => {
   return e;
 };
 
-// --- TAMBAH ITEM KE KERANJANG ---
+// TAMBAH ITEM KE KERANJANG
 async function addToKeranjangService(req) {
   const guest_id = getGuestId(req);
   const { menu_id, jumlah = 1, catatan = '' } = req.body;
@@ -17,7 +16,6 @@ async function addToKeranjangService(req) {
     throw httpErr(400, 'guest_id dan menu_id wajib dikirim');
   }
 
-  // Ambil info menu
   const menuResult = await pool.query(
     'SELECT harga, kios_id, foto_menu, nama_menu FROM menu WHERE id = $1',
     [menu_id]
@@ -26,7 +24,6 @@ async function addToKeranjangService(req) {
 
   const { harga, kios_id, foto_menu, nama_menu } = menuResult.rows[0];
 
-  // Cek kalau ada item dari kios lain
   const existingCart = await pool.query(
     'SELECT DISTINCT kios_id FROM keranjang WHERE guest_id = $1',
     [guest_id]
@@ -38,7 +35,6 @@ async function addToKeranjangService(req) {
     );
   }
 
-  // Cek apakah item sudah ada
   const existing = await pool.query(
     'SELECT * FROM keranjang WHERE guest_id = $1 AND menu_id = $2',
     [guest_id, menu_id]
@@ -82,11 +78,10 @@ async function addToKeranjangService(req) {
     }
   };
 
-  // status harus 200 saat update, 201 saat insert (sesuai perilaku lama)
   return { status: isUpdate ? 200 : 201, body };
 }
 
-// --- AMBIL KERANJANG ---
+// AMBIL KERANJANG 
 async function getKeranjangService(req) {
   const guest_id = getGuestId(req);
   if (!guest_id) throw httpErr(400, 'guest_id wajib dikirim');
@@ -104,7 +99,6 @@ async function getKeranjangService(req) {
   const total_harga = items.reduce((sum, it) => sum + Number(it.subtotal || 0), 0);
   const kios_id = items.length > 0 ? items[0].kios_id : null;
 
-  // FE mengandalkan header X-Buyer-Id → jangan ubah
   return {
     status: 200,
     headers: { 'X-Buyer-Id': guest_id },
@@ -112,7 +106,7 @@ async function getKeranjangService(req) {
   };
 }
 
-// --- UPDATE ITEM KERANJANG ---
+// UPDATE ITEM KERANJANG 
 async function updateKeranjangItemService(req) {
   const guest_id = getGuestId(req);
   const { id } = req.params;
@@ -157,7 +151,7 @@ async function updateKeranjangItemService(req) {
   };
 }
 
-// --- HAPUS ITEM KERANJANG ---
+// HAPUS ITEM KERANJANG
 async function removeFromKeranjangService(req) {
   const guest_id = getGuestId(req);
   const { id } = req.params;

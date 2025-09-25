@@ -1,4 +1,3 @@
-// controllers/menuController.js
 const {
   getAllMenuService,
   addMenuService,
@@ -13,13 +12,12 @@ const {
 } = require('../services/menuService');
 const fs = require('fs');
 
-/* ====================== PENJUAL ====================== */
 
 // Ambil semua menu (penjual)
 const getAllMenu = async (req, res) => {
   try {
     const { status, body } = await getAllMenuService(req);
-    return res.status(status).json(body); // array menu penjual
+    return res.status(status).json(body); 
   } catch (error) {
     return res.status(500).json({ message: 'Gagal mengambil menu', error: error.message });
   }
@@ -29,7 +27,7 @@ const getAllMenu = async (req, res) => {
 const addMenu = async (req, res) => {
   try {
     const { status, body } = await addMenuService(req);
-    return res.status(status).json(body); // { message, data }
+    return res.status(status).json(body); 
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Terjadi kesalahan server', error: error.message });
@@ -40,7 +38,7 @@ const addMenu = async (req, res) => {
 const updateMenu = async (req, res) => {
   try {
     const { status, body } = await updateMenuService(req);
-    return res.status(status).json(body); // { message, menu }
+    return res.status(status).json(body); 
   } catch (err) {
     console.error(err);
     if (req.file) {
@@ -55,7 +53,7 @@ const updateMenu = async (req, res) => {
 const getMenuById = async (req, res) => {
   try {
     const { status, body } = await getMenuByIdService(req);
-    return res.status(status).json(body); // row tunggal
+    return res.status(status).json(body); 
   } catch (error) {
     if (error.status) return res.status(error.status).json({ message: error.message });
     return res.status(500).json({ message: 'Gagal mengambil detail menu', error: error.message });
@@ -66,7 +64,7 @@ const getMenuById = async (req, res) => {
 const deleteMenu = async (req, res) => {
   try {
     const { status, body } = await deleteMenuService(req);
-    return res.status(status).json(body); // { message }
+    return res.status(status).json(body); 
   } catch (error) {
     if (error.status) return res.status(error.status).json({ message: error.message });
     return res.status(500).json({ message: 'Gagal menghapus menu', error: error.message });
@@ -77,49 +75,47 @@ const deleteMenu = async (req, res) => {
 const getMenusPaginated = async (req, res) => {
   try {
     const { status, body } = await getMenusPaginatedService(req);
-    return res.status(status).json(body); // { page, limit, total, data }
+    return res.status(status).json(body); 
   } catch (err) {
     return res.status(500).json({ message: 'Gagal mengambil menu', error: err.message });
   }
 };
 
-/* ====================== PEMBELI ====================== */
-
-// Ambil 5 menu terbaru (pembeli) → array langsung
+// Ambil 5 menu terbaru (pembeli) 
 const getNewMenus = async (req, res) => {
   try {
     const { status, body } = await getNewMenusService();
-    return res.status(status).json(body); // ⬅️ array
+    return res.status(status).json(body); 
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 };
 
-// Cari menu (pembeli) → array langsung
+// Cari menu (pembeli) 
 const searchMenus = async (req, res) => {
   try {
     const { status, body } = await searchMenusService(req);
-    return res.status(status).json(body); // ⬅️ array
+    return res.status(status).json(body); 
   } catch (err) {
     return res.status(err.status || 500).json({ message: err.message });
   }
 };
 
-// Cari menu di kios tertentu (pembeli) → array langsung
+// Cari menu di kios tertentu (pembeli) 
 const searchMenusByKios = async (req, res) => {
   try {
     const { status, body } = await searchMenusByKiosService(req);
-    return res.status(status).json(body); // ⬅️ array
+    return res.status(status).json(body); 
   } catch (err) {
     return res.status(err.status || 500).json({ message: err.message });
   }
 };
 
-// Detail menu (pembeli) → object tunggal
+// Detail menu (pembeli) 
 const getMenuByIdForBuyer = async (req, res) => {
   try {
     const { status, body } = await getMenuByIdForBuyerService(req);
-    return res.status(status).json(body); // ⬅️ object
+    return res.status(status).json(body); 
   } catch (err) {
     return res.status(err.status || 500).json({ message: err.message });
   }

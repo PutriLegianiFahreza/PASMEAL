@@ -1,4 +1,3 @@
-// services/pesananService.js
 const pool = require('../config/db');
 const getGuestId = require('../utils/getGuestId');
 const { sendWhatsApp: sendWaMessage } = require('../utils/wa');
@@ -39,7 +38,7 @@ function getStatusLabel(tipe_pengantaran, statusDb) {
   return mapping[key]?.[statusDb] || statusDb;
 }
 
-// --- Notifikasi ke penjual ---
+// Notifikasi ke penjual 
 async function notifyPenjualService(kiosId, pesananId) {
   try {
     const cekLog = await pool.query(
@@ -71,7 +70,7 @@ async function notifyPenjualService(kiosId, pesananId) {
   }
 }
 
-// --- Notifikasi ke pembeli setelah pesanan selesai ---
+// Notifikasi ke pembeli setelah pesanan selesai 
 async function notifyPembeliPesananSelesaiService(pesananId) {
   try {
     const pesananRes = await pool.query(
@@ -109,7 +108,7 @@ Selamat menikmati 🍽️!`;
   }
 }
 
-// --- Membuat pesanan ---
+// Membuat pesanan
 async function buatPesananService(req) {
   const guest_id = req.body.guest_id || getGuestId(req);
   const { tipe_pengantaran, nama_pemesan, no_hp, catatan = '', diantar_ke } = req.body;
@@ -136,7 +135,6 @@ async function buatPesananService(req) {
     const total_harga = items.reduce((sum, i) => sum + i.harga * i.jumlah, 0);
     const total_estimasi = items.reduce((sum, i) => sum + (i.estimasi_menit || 0) * i.jumlah, 0);
 
-    // antrean aktif (info—tidak dipakai langsung dalam response)
     await client.query(
       `SELECT id, status, total_estimasi, estimasi_selesai_at 
        FROM pesanan WHERE kios_id=$1 AND status IN ('paid','processing','ready','delivering') 
@@ -182,10 +180,9 @@ async function buatPesananService(req) {
   }
 }
 
-// --- Status pesanan untuk guest: timer hanya saat processing/ready/delivering, pakai timestamp persist ---
+// Status pesanan untuk guest: timer hanya saat processing/ready/delivering
 async function getStatusPesananGuestService(req) {
   const pesananId = parseInt(req.params.id, 10);
-  // Fallback ambil dari query ?guest_id= / ?gid=
   const guest_id = req.query.guest_id || req.query.gid || getGuestId(req);
   if (isNaN(pesananId)) throw httpErr(400, 'ID pesanan tidak valid');
   if (!guest_id) throw httpErr(401, 'Guest tidak terdeteksi');
@@ -256,7 +253,7 @@ async function getStatusPesananGuestService(req) {
   };
 }
 
-// --- Daftar pesanan by guest (dukung ?gid=) ---
+// Daftar pesanan by guest 
 async function getPesananByGuestService(req) {
   const guest_id = req.query.guest_id || req.query.gid || getGuestId(req);
   if (!guest_id) throw httpErr(400, 'guest_id wajib diisi');
@@ -283,7 +280,7 @@ async function getPesananByGuestService(req) {
   return { status: 200, body: { page, totalPages, limit, total, data: result.rows } };
 }
 
-// --- Detail pesanan untuk guest (dukung ?gid=; "menunggu" sebelum diproses) ---
+// Detail pesanan untuk guest
 async function getDetailPesananService(req) {
   const { id } = req.params;
   const guest_id = req.query.guest_id || req.query.gid || getGuestId(req);
@@ -362,7 +359,7 @@ async function getDetailPesananService(req) {
 }
 
 
-// --- Pesanan masuk untuk penjual (ETA stabil; anchor persist; anti-NaN) ---
+// Pesanan masuk untuk penjual 
 async function getPesananMasukService(req) {
   const penjualId = Number(req.user.id || req.user.penjual_id);
   if (isNaN(penjualId)) throw httpErr(400, 'User ID tidak valid');
@@ -451,7 +448,7 @@ async function getPesananMasukService(req) {
   };
 }
 
-// --- Detail pesanan masuk (jadwal kumulatif serial & anchor konsisten) ---
+// Detail pesanan masuk 
 async function getDetailPesananMasukService(req) {
   const pesananAntreanRes = await pool.query(
     `SELECT p.id, p.paid_at, p.created_at, COALESCE(p.total_estimasi,0) AS total_estimasi,
@@ -526,7 +523,7 @@ async function getDetailPesananMasukService(req) {
   };
 }
 
-// --- Badge jumlah pesanan masuk ---
+// Badge jumlah pesanan masuk 
 async function countPesananMasukService(req) {
   const result = await pool.query(
     `SELECT COUNT(id) AS jumlah FROM pesanan
@@ -537,8 +534,7 @@ async function countPesananMasukService(req) {
   return { status: 200, body: { jumlah: parseInt(result.rows[0].jumlah, 10) || 0 } };
 }
 
-// --- Update status pesanan ---
-// --- Update status pesanan ---
+// Update status pesanan 
 async function updateStatusPesananService(req) {
   const { id } = req.params;
   const { status } = req.body;
@@ -585,11 +581,8 @@ async function updateStatusPesananService(req) {
           AND status IN ('processing','ready','delivering')`,
         [pesananTarget.kios_id]
       );
-      const startAt = startRow.rows[0].start_at; // timestamptz dari PG
+      const startAt = startRow.rows[0].start_at; 
 
-      // ⚠️ PISAHKAN PARAM untuk beda tipe kolom:
-      // - waktu_proses_mulai: kemungkinan TIMESTAMP (tanpa TZ)
-      // - estimasi_mulai_at / estimasi_selesai_at: TIMESTAMPTZ
       const upd = await client.query(
         `UPDATE pesanan
             SET status = 'processing',
@@ -652,7 +645,7 @@ async function updateStatusPesananService(req) {
   }
 }
 
-// --- Riwayat pesanan (done) ---
+// Riwayat pesanan (done) 
 async function getRiwayatPesananService(req) {
   const penjualId = req.user.id;
   const page = parseInt(req.query.page, 10) || 1;
@@ -691,7 +684,7 @@ async function getRiwayatPesananService(req) {
   return { status: 200, body: { page, totalPages, limit, total, data } };
 }
 
-// --- Detail riwayat pesanan (done) ---
+// Detail riwayat pesanan (done) 
 async function getDetailRiwayatPesananService(req) {
   const { id } = req.params;
   const penjualId = req.user.id;

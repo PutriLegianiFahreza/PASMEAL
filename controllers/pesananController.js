@@ -1,4 +1,3 @@
-// controllers/pesananController.js (thin controller)
 const {
   // helpers
   getStatusLabel,
@@ -18,20 +17,22 @@ const {
   getStatusPesananGuestService,
 } = require('../services/pesananService');
 
-// Notifikasi ke penjual (dipanggil modul lain, jaga nama/kontrak)
+// Notifikasi ke penjual 
 const notifyPenjual = async (kiosId, pesananId) => {
   return notifyPenjualService(kiosId, pesananId);
 };
 
-// Notifikasi ke pembeli (dipanggil internal)
+// Notifikasi ke pembeli 
 const notifyPembeliPesananSelesai = async (pesananId) => {
   return notifyPembeliPesananSelesaiService(pesananId);
 };
 
-// helper yang diexport dengan nama sama
+
 module.exports.getStatusLabel = getStatusLabel;
 
 // === Endpoints ===
+
+//buat pesanan (pembeli)
 const buatPesanan = async (req, res) => {
   try {
     const { status, body } = await buatPesananService(req);
@@ -43,6 +44,7 @@ const buatPesanan = async (req, res) => {
   }
 };
 
+// Cek status pesanan (guest)
 const getStatusPesananGuest = async (req, res) => {
   try {
     const { status, body } = await getStatusPesananGuestService(req);
@@ -54,6 +56,7 @@ const getStatusPesananGuest = async (req, res) => {
   }
 };
 
+// cek pesanan by guest (pembeli)
 const getPesananByGuest = async (req, res) => {
   try {
     const { status, body } = await getPesananByGuestService(req);
@@ -65,6 +68,7 @@ const getPesananByGuest = async (req, res) => {
   }
 };
 
+// detail pesanan by guest (pembeli)
 const getDetailPesanan = async (req, res) => {
   try {
     const { status, body } = await getDetailPesananService(req);
@@ -76,6 +80,7 @@ const getDetailPesanan = async (req, res) => {
   }
 };
 
+// pesanan masuk (penjual)
 const getPesananMasuk = async (req, res) => {
   try {
     const { status, body } = await getPesananMasukService(req);
@@ -87,6 +92,7 @@ const getPesananMasuk = async (req, res) => {
   }
 };
 
+// detail pesanan masuk (penjual)
 const getDetailPesananMasuk = async (req, res) => {
   try {
     const { status, body } = await getDetailPesananMasukService(req);
@@ -98,6 +104,7 @@ const getDetailPesananMasuk = async (req, res) => {
   }
 };
 
+// hitung pesanan masuk (penjual)
 const countPesananMasuk = async (req, res) => {
   try {
     const { status, body } = await countPesananMasukService(req);
@@ -109,6 +116,7 @@ const countPesananMasuk = async (req, res) => {
   }
 };
 
+// update status pesanan (penjual)
 const updateStatusPesanan = async (req, res) => {
   try {
     const { status, body } = await updateStatusPesananService(req);
@@ -120,6 +128,7 @@ const updateStatusPesanan = async (req, res) => {
   }
 };
 
+// riwayat pesanan (pembeli)
 const getRiwayatPesanan = async (req, res) => {
   try {
     const { status, body } = await getRiwayatPesananService(req);
@@ -131,6 +140,7 @@ const getRiwayatPesanan = async (req, res) => {
   }
 };
 
+// detail riwayat pesanan (pembeli)
 const getDetailRiwayatPesanan = async (req, res) => {
   try {
     const { status, body } = await getDetailRiwayatPesananService(req);
@@ -143,7 +153,6 @@ const getDetailRiwayatPesanan = async (req, res) => {
 };
 
 module.exports = {
-  // endpoints
   buatPesanan,
   getPesananByGuest,
   getDetailPesanan,
@@ -154,7 +163,6 @@ module.exports = {
   countPesananMasuk,
   getDetailRiwayatPesanan,
   getStatusPesananGuest,
-  // helpers/notifications (dipakai modul lain)
   notifyPenjual,
   notifyPembeliPesananSelesai,
   getStatusLabel,

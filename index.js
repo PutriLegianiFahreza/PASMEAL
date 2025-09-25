@@ -1,4 +1,3 @@
-// index.js
 require('dotenv').config();
 require('express-async-errors');
 
@@ -11,7 +10,7 @@ const path = require('path');
 
 const app = express();
 
-/* ---------- Core security & infra middleware ---------- */
+// Core security & infra middleware 
 app.set('trust proxy', 1);
 
 // Izinkan load asset lintas origin (gambar, dsb)
@@ -23,8 +22,7 @@ app.use(
 
 app.use(express.json({ limit: '1mb' }));
 
-/* ---------- CORS ---------- */
-// Hardcode domain FE + dukung ENV (CORS_ORIGINS="https://a.com,https://b.com")
+// CORS 
 const STATIC_ORIGINS = [
   'https://pas-meal.vercel.app',       // FE penjual
   'https://pas-meal-2rlb.vercel.app',  // FE pembeli
@@ -37,7 +35,7 @@ const ENV_ORIGINS = (process.env.CORS_ORIGINS || '')
   .map(s => s.trim())
   .filter(Boolean);
 
-// Pola untuk semua preview Vercel dari project yang sama (opsional)
+// render dynamic origin pattern
 const allowByPattern = (origin = '') =>
   /^https:\/\/pas-meal(-[a-z0-9-]+)?\.vercel\.app$/.test(origin);
 
@@ -67,7 +65,7 @@ app.use(
   )
 );
 
-/* -------------------------- Routes -------------------------- */
+// Routes
 const authRoutes = require('./routes/authRoutes');
 const kiosRoutes = require('./routes/kiosRoutes');
 const menuRoutes = require('./routes/menuRoutes');
@@ -100,14 +98,14 @@ app.get('/', (req, res) => {
   res.send('PasMeal API Backend is running...');
 });
 
-/* --------------- 404 handler --------------- */
+// 404 handler 
 app.use((req, res) => res.status(404).json({ message: 'Endpoint tidak ditemukan' }));
 
-/* ----------------- Error handler ----------------- */
+//Error handler 
 const errorHandler = require('./middlewares/errorHandler');
 app.use(errorHandler);
 
-/* ----------------- Exports ----------------- */
+// Exports 
 module.exports = app;
 module.exports.handler = serverless(app);
 

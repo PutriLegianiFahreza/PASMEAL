@@ -18,7 +18,7 @@ router.get('/pesanan/riwayat/:id', verifiedMiddleware, pesananController.getDeta
 // Endpoint untuk penjual biasa (login & verified)
 router.get('/pesanan-masuk', verifiedMiddleware, pesananController.getPesananMasuk);
 
-// ✅ Hitung jumlah pesanan masuk (penjual) → buat badge
+// Hitung jumlah pesanan masuk (penjual) → buat badge
 router.get('/pesanan-masuk/count', verifiedMiddleware, pesananController.countPesananMasuk);
 
 // Ambil detail pesanan masuk (untuk penjual lihat status)

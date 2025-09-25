@@ -1,4 +1,3 @@
-// services/searchService.js
 const pool = require('../config/db');
 
 const httpErr = (status, message) => {
@@ -28,8 +27,6 @@ async function searchAllService(req) {
 
     return { status: 200, body: { kios: kiosResult.rows, menus: menuResult.rows } };
   } catch (err) {
-    // biar controller tetap kirim 500 seperti sebelumnya
-    // eslint-disable-next-line no-console
     console.error('Gagal melakukan pencarian:', err);
     throw httpErr(500, 'Terjadi kesalahan server');
   }

@@ -1,4 +1,3 @@
-// services/kiosService.js
 const pool = require('../config/db');
 const { sendWhatsAppOTP } = require('../utils/wa');
 const cloudinary = require('../utils/cloudinary');
@@ -19,25 +18,21 @@ async function createKiosService(req) {
   if (!penjual_id) throw httpErr(400, 'penjual_id diperlukan');
 
   try {
-    // cek penjual valid
     const penjual = await pool.query('SELECT * FROM penjual WHERE id = $1', [penjual_id]);
     if (penjual.rows.length === 0) throw httpErr(400, 'Penjual tidak valid');
 
     const noHp = penjual.rows[0].no_hp;
     if (!noHp) throw httpErr(400, 'Nomor WhatsApp penjual belum terdaftar');
 
-    // cek apakah penjual sudah punya kios
     const cek = await pool.query('SELECT * FROM kios WHERE penjual_id = $1', [penjual_id]);
     if (cek.rows.length > 0) throw httpErr(409, 'Kios sudah terdaftar untuk penjual ini');
 
-    // cek nama kios unik
     const cekNamaKios = await pool.query(
       'SELECT * FROM kios WHERE LOWER(nama_kios) = LOWER($1)',
       [nama_kios]
     );
     if (cekNamaKios.rows.length > 0) throw httpErr(409, 'Nama kios telah digunakan, silakan pilih nama lain');
 
-    // insert kios baru
     const result = await pool.query(
       `INSERT INTO kios (penjual_id, nama_kios, nama_bank, nomor_rekening)
        VALUES ($1, $2, $3, $4)
@@ -45,23 +40,19 @@ async function createKiosService(req) {
       [penjual_id, nama_kios, nama_bank, nomor_rekening]
     );
 
-    // generate OTP (pertahankan behavior lama)
     const kode_otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiredAt = new Date(Date.now() + 3 * 60 * 1000); // 3 menit
 
-    // hapus OTP aktif sebelumnya
     await pool.query(`DELETE FROM otp WHERE penjual_id = $1 AND is_used = FALSE`, [penjual_id]);
 
-    // HASH OTP sebelum simpan
     const otpHash = await bcrypt.hash(kode_otp, 10);
 
     await pool.query(
       `INSERT INTO otp (penjual_id, otp_code, expired_at, is_used)
        VALUES ($1, $2, $3, FALSE)`,
-      [penjual_id, otpHash, expiredAt] // simpan hash ke kolom otp_code
+      [penjual_id, otpHash, expiredAt] 
     );
 
-    // kirim OTP ke WA tetap plaintext
     Promise.resolve()
       .then(() => sendWhatsAppOTP(noHp, kode_otp))
       .then(() => console.log(`OTP dikirim ke ${noHp}`))
@@ -76,15 +67,12 @@ async function createKiosService(req) {
     };
   } catch (err) {
     if (err.code === '23505') {
-      // duplicate key
       throw httpErr(409, 'Nama kios sudah digunakan');
     }
     if (!err.status) err.status = 500;
     throw err;
   }
 }
-
-/* ===================== PEMBELI (return ARRAY langsung) ===================== */
 
 // MENAMPILKAN 8 KIOS DI HOMEPAGE (pembeli)
 async function getKiosHomepageService() {
@@ -94,14 +82,14 @@ async function getKiosHomepageService() {
      ORDER BY id DESC
      LIMIT 8`
   );
-  return { status: 200, body: result.rows }; // ← array langsung
+  return { status: 200, body: result.rows }; 
 }
 
 // SEARCH KIOS (pembeli)
 async function searchKiosService(req) {
   const { query } = req.query;
   if (!query || query.trim() === '') {
-    return { status: 200, body: [] }; // ← array kosong
+    return { status: 200, body: [] }; 
   }
   const result = await pool.query(
     `SELECT id, nama_kios, deskripsi, gambar_kios
@@ -110,7 +98,7 @@ async function searchKiosService(req) {
      ORDER BY id DESC`,
     [`%${query}%`]
   );
-  return { status: 200, body: result.rows }; // ← array langsung
+  return { status: 200, body: result.rows }; 
 }
 
 // Ambil semua kios (pembeli)
@@ -120,10 +108,9 @@ async function getAllKiosService() {
      FROM kios
      ORDER BY id DESC`
   );
-  return { status: 200, body: result.rows }; // ← array langsung
+  return { status: 200, body: result.rows }; 
 }
 
-// Ambil menu berdasarkan kios (pembeli)
 // Ambil menu berdasarkan kios (pembeli)
 async function getMenusByKiosService(kiosId) {
   const result = await pool.query(
@@ -141,11 +128,9 @@ async function getMenusByKiosService(kiosId) {
      ORDER BY created_at DESC`,
     [kiosId]
   );
-  return { status: 200, body: result.rows }; // array langsung
+  return { status: 200, body: result.rows }; 
 }
 
-
-/* ===================== PENJUAL (tetap berstruktur) ===================== */
 
 // profile kios (penjual)
 async function getKiosByPenjualService(req) {
@@ -168,26 +153,22 @@ async function updateKiosService(req) {
 
   const { nama_kios, deskripsi, nomor_rekening, nama_bank } = req.body;
 
-  // cek kios ada atau tidak
   const kios = await pool.query('SELECT * FROM kios WHERE id = $1', [kiosId]);
   if (kios.rows.length === 0) throw httpErr(404, 'Kios tidak ditemukan');
 
-  let gambarUrl = kios.rows[0].gambar_kios; // fallback gambar lama
+  let gambarUrl = kios.rows[0].gambar_kios; 
 
-  console.log('req.file:', req.file); // debug file upload
+  console.log('req.file:', req.file); 
 
-  // kalau ada file baru → upload ke cloudinary
   if (req.file) {
     const upload = await cloudinary.uploader.upload(req.file.path, { folder: 'kios' });
     gambarUrl = upload.secure_url;
 
-    // hapus file lokal setelah upload
     fs.unlink(req.file.path, (err) => {
       if (err) console.error('Gagal hapus file lokal:', err);
     });
   }
 
-  // gunakan nilai lama jika field tidak dikirim
   const updatedNama = nama_kios ?? kios.rows[0].nama_kios;
   const updatedDeskripsi = deskripsi ?? kios.rows[0].deskripsi;
   const updatedNomorRek = nomor_rekening ?? kios.rows[0].nomor_rekening;
@@ -200,8 +181,6 @@ async function updateKiosService(req) {
      RETURNING *`,
     [updatedNama, updatedDeskripsi, updatedNomorRek, updatedNamaBank, gambarUrl, kiosId]
   );
-
-  // FE penjual memang mengharapkan row langsung
   return { status: 200, body: result.rows[0] };
 }
 

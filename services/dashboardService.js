@@ -1,4 +1,3 @@
-// services/dashboardService.js
 const pool = require('../config/db');
 
 function getStatusLabel(tipe_pengantaran, statusDb) {
@@ -21,7 +20,6 @@ function getStatusLabel(tipe_pengantaran, statusDb) {
 }
 
 async function getDashboardDataService({ kios_id, penjual_id }) {
-  // Bangun filter persis seperti versi lama
   let filterClause = '';
   let filterValue = [];
 
@@ -70,7 +68,6 @@ async function getDashboardDataService({ kios_id, penjual_id }) {
     )
   ]);
 
-  // Kembalikan shape yang SAMA seperti controller lama
   return {
     totalPesanan: parseInt(totalPesananQuery.rows[0].total_pesanan) || 0,
     totalMenu: parseInt(totalMenuQuery.rows[0].total_menu) || 0,

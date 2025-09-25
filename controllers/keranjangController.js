@@ -1,4 +1,3 @@
-// controllers/keranjangController.js (refactor: thin controller)
 const {
   addToKeranjangService,
   getKeranjangService,
@@ -12,7 +11,6 @@ const addToKeranjang = async (req, res) => {
     const { status, body } = await addToKeranjangService(req);
     return res.status(status).json(body);
   } catch (err) {
-    // khusus 409 perlu kirim existing_kios_id bila ada
     if (err.status === 409 && err.existing_kios_id) {
       return res.status(409).json({
         message: err.message,
@@ -29,7 +27,7 @@ const getKeranjang = async (req, res) => {
   try {
     const { status, headers, body } = await getKeranjangService(req);
     if (headers?.['X-Buyer-Id']) {
-      res.setHeader('X-Buyer-Id', headers['X-Buyer-Id']); // tetap kirim header yang sama
+      res.setHeader('X-Buyer-Id', headers['X-Buyer-Id']); 
     }
     return res.status(status).json(body);
   } catch (err) {

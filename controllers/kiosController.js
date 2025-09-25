@@ -1,4 +1,3 @@
-// controllers/kiosController.js
 const {
   createKiosService,
   getKiosHomepageService,
@@ -14,7 +13,7 @@ const {
 const createKios = async (req, res) => {
   try {
     const { status, body } = await createKiosService(req);
-    return res.status(status).json(body); // objek { message, data }
+    return res.status(status).json(body); 
   } catch (err) {
     if (err.status) return res.status(err.status).json({ message: err.message });
     console.error(err);
@@ -22,51 +21,48 @@ const createKios = async (req, res) => {
   }
 };
 
-/* ====================== PEMBELI ====================== */
-
-// HOMEPAGE (8 kios) → array langsung
+// HOMEPAGE (8 kios)
 const getKiosHomepage = async (req, res) => {
   try {
     const { status, body } = await getKiosHomepageService();
-    return res.status(status).json(body); // array []
+    return res.status(status).json(body); 
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 };
 
-// SEARCH kios → array langsung
+// SEARCH kios
 const searchKios = async (req, res) => {
   try {
     const { status, body } = await searchKiosService(req);
-    return res.status(status).json(body); // array []
+    return res.status(status).json(body); 
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 };
 
-// ALL kios → array langsung
+// ALL kios 
 const getAllKios = async (req, res) => {
   try {
     const { status, body } = await getAllKiosService();
-    return res.status(status).json(body); // array []
+    return res.status(status).json(body); 
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 };
 
-// MENUS by kios → array langsung
+// MENUS by kios
 const getMenusByKios = async (req, res) => {
   try {
     const { status, body } = await getMenusByKiosService(req.params.id);
-    return res.status(status).json(body); // array []
+    return res.status(status).json(body); 
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 };
 
-/* ====================== PENJUAL ====================== */
 
-// PROFILE kios (penjual) → objek { message, data }
+// PROFILE kios (penjual) 
 const getKiosByPenjual = async (req, res) => {
   try {
     const { status, body } = await getKiosByPenjualService(req);
@@ -78,7 +74,7 @@ const getKiosByPenjual = async (req, res) => {
   }
 };
 
-// UPDATE kios (penjual) → objek row langsung
+// UPDATE kios (penjual) 
 const updateKios = async (req, res) => {
   try {
     const { status, body } = await updateKiosService(req);
@@ -90,7 +86,7 @@ const updateKios = async (req, res) => {
   }
 };
 
-// DETAIL kios (pembeli) → objek { message, data }
+// DETAIL kios (pembeli) 
 const getKiosDetail = async (req, res) => {
   try {
     const { status, body } = await getKiosDetailService(req);

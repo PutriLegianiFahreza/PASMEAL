@@ -1,4 +1,3 @@
-// services/authService.js
 const pool = require('../config/db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
@@ -29,8 +28,6 @@ module.exports = {
        RETURNING id, no_hp`,
       [nama, email, no_hp, hashedPassword]
     );
-
-    // (Tetap sesuai behavior lama: kirim JWT 7d walau is_verified=false)
     const token = jwt.sign(
       { id: result.rows[0].id, no_hp: result.rows[0].no_hp, is_verified: false },
       process.env.JWT_SECRET,
@@ -42,7 +39,6 @@ module.exports = {
 
  // VERIFY OTP (pakai hash)
 async verifyOtp({ kode_otp }) {
-  // Ambil kandidat OTP yang masih valid & belum dipakai
   const { rows } = await pool.query(`
     SELECT id, penjual_id, otp_code
     FROM otp
@@ -50,11 +46,9 @@ async verifyOtp({ kode_otp }) {
     ORDER BY expired_at DESC
     LIMIT 50
   `);
-
-  // Cari yang hash-nya cocok
   let otp = null;
   for (const row of rows) {
-    const ok = await bcrypt.compare(kode_otp, row.otp_code); // otp_code sekarang berisi HASH
+    const ok = await bcrypt.compare(kode_otp, row.otp_code); 
     if (ok) { otp = row; break; }
   }
 
@@ -80,7 +74,6 @@ async verifyOtp({ kode_otp }) {
     const penjual = result.rows[0];
     if (penjual.is_verified) throw httpErr(400, 'Akun sudah diverifikasi');
 
-    // cek OTP terakhir
     const cekOtp = await pool.query(
       `SELECT * FROM otp 
        WHERE penjual_id = $1 AND is_used = FALSE
@@ -95,7 +88,6 @@ async verifyOtp({ kode_otp }) {
       if (expiredAt > now) throw httpErr(400, 'Silakan tunggu hingga OTP sebelumnya kedaluwarsa');
     }
 
-    // generate OTP baru
     const kode_otp = Math.floor(100000 + Math.random() * 900000).toString();
     const newExpiredAt = new Date(Date.now() + 3 * 60 * 1000); // 3 menit
 
@@ -186,7 +178,6 @@ async verifyOtp({ kode_otp }) {
       throw httpErr(401, 'Token tidak ditemukan');
     }
     const token = authorization.split(' ')[1];
-    // (Tetap pakai decode agar behavior sama; kalau mau lebih aman ganti verify)
     const decoded = jwt.decode(token);
     await pool.query(
       'INSERT INTO blacklisted_tokens (token, expired_at) VALUES ($1, to_timestamp($2))',

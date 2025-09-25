@@ -1,4 +1,3 @@
-// controllers/penjualController.js (thin controller)
 const {
   getProfileService,
   updateProfilService,

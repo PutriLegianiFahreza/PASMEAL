@@ -1,4 +1,3 @@
-// services/menuService.js
 const pool = require('../config/db');
 const cloudinary = require('../utils/cloudinary');
 const fs = require('fs');
@@ -9,7 +8,7 @@ const httpErr = (status, message) => {
   return e;
 };
 
-/* === Ambil semua menu (penjual) === */
+//Ambil semua menu (penjual)
 async function getAllMenuService(req) {
   const penjualId = req.user.id;
   const result = await pool.query(
@@ -22,7 +21,7 @@ async function getAllMenuService(req) {
   return { status: 200, body: result.rows };
 }
 
-/* === Tambah menu (penjual) === */
+//Tambah menu (penjual)
 async function addMenuService(req) {
   const penjual_id = req.user.id;
   const kios_id = req.user.kios_id;
@@ -44,9 +43,6 @@ async function addMenuService(req) {
     foto_menu = uploadResult.secure_url;
     foto_public_id = uploadResult.public_id;
   }
-
-  // Debug (dipertahankan agar behavior/log tetap sama)
-  // eslint-disable-next-line no-console
   console.log({ nama_menu, deskripsi, harga, estimasi_menit, status_tersedia, penjual_id, kios_id });
 
   const dbResult = await pool.query(
@@ -72,7 +68,7 @@ async function addMenuService(req) {
   };
 }
 
-/* === Update menu (penjual) === */
+//Update menu (penjual) 
 async function updateMenuService(req) {
   const { id } = req.params;
   const penjual_id = req.user.id;
@@ -85,7 +81,6 @@ async function updateMenuService(req) {
     estimasi_menit,
   } = req.body;
 
-  // 1. Ambil data menu lama
   const result = await pool.query('SELECT * FROM menu WHERE id = $1 AND penjual_id = $2', [id, penjual_id]);
 
   if (result.rows.length === 0) {
@@ -95,11 +90,9 @@ async function updateMenuService(req) {
 
   const oldMenu = result.rows[0];
 
-  // default: pakai foto lama
   let newFotoUrl = oldMenu.foto_menu;
   let newFotoPublicId = oldMenu.foto_public_id;
 
-  // 2. Jika ada file baru → upload ke Cloudinary
   if (req.file) {
     try {
       const resultUpload = await cloudinary.uploader.upload(req.file.path);
@@ -112,14 +105,12 @@ async function updateMenuService(req) {
         await cloudinary.uploader.destroy(oldMenu.foto_public_id);
       }
     } catch (uploadError) {
-      // eslint-disable-next-line no-console
       console.error('Gagal saat mengunggah ke Cloudinary:', uploadError);
       fs.unlinkSync(req.file.path);
       throw httpErr(500, 'Gagal memperbarui gambar');
     }
   }
 
-  // 3. Data update (pakai body baru, fallback ke lama)
   const updatedData = {
     nama_menu: nama_menu ?? oldMenu.nama_menu,
     deskripsi: deskripsi ?? oldMenu.deskripsi,
@@ -129,7 +120,6 @@ async function updateMenuService(req) {
     estimasi_menit: estimasi_menit ?? oldMenu.estimasi_menit,
   };
 
-  // 4. Update DB
   const updated = await pool.query(
     `UPDATE menu
      SET nama_menu = $1, deskripsi = $2, harga = $3, foto_menu = $4, 
@@ -153,7 +143,7 @@ async function updateMenuService(req) {
   return { status: 200, body: { message: 'Menu berhasil diperbarui', menu: updated.rows[0] } };
 }
 
-/* === Ambil detail menu (penjual) === */
+// Ambil detail menu (penjual) 
 async function getMenuByIdService(req) {
   const penjualId = req.user.id;
   const menuId = parseInt(req.params.id, 10);
@@ -168,7 +158,7 @@ async function getMenuByIdService(req) {
   return { status: 200, body: result.rows[0] };
 }
 
-/* === Hapus menu (penjual) === */
+// Hapus menu (penjual)
 async function deleteMenuService(req) {
   const penjualId = req.user.id;
   const menuId = parseInt(req.params.id, 10);
@@ -188,7 +178,7 @@ async function deleteMenuService(req) {
   return { status: 200, body: { message: 'Menu berhasil dihapus' } };
 }
 
-/* === Ambil menu dengan pagination (penjual) === */
+// Ambil menu dengan pagination (penjual) 
 async function getMenusPaginatedService(req) {
   const penjualId = req.user.id;
   const page = parseInt(req.query.page, 10) || 1;
@@ -210,7 +200,7 @@ async function getMenusPaginatedService(req) {
   return { status: 200, body: { page, limit, total, data: result.rows } };
 }
 
-/* === Ambil 5 menu terbaru (pembeli) === */
+// Ambil 5 menu terbaru (pembeli) 
 async function getNewMenusService() {
   const result = await pool.query(
     `SELECT id, foto_menu, nama_menu, deskripsi, harga, estimasi_menit,
@@ -222,7 +212,7 @@ async function getNewMenusService() {
   return { status: 200, body: result.rows }; // array langsung
 }
 
-/* === Cari menu (pembeli) === */
+// Cari menu (pembeli) 
 async function searchMenusService(req) {
   const { query } = req.query;
   if (!query) throw httpErr(400, 'Query pencarian wajib diisi');
@@ -234,10 +224,10 @@ async function searchMenusService(req) {
      ORDER BY created_at DESC`,
     [`%${query}%`]
   );
-  return { status: 200, body: result.rows }; // array langsung
+  return { status: 200, body: result.rows }; 
 }
 
-/* === Cari menu di kios tertentu (pembeli) === */
+// Cari menu di kios tertentu (pembeli) 
 async function searchMenusByKiosService(req) {
   const { query } = req.query;
   const kiosId = parseInt(req.params.id, 10);
@@ -251,10 +241,10 @@ async function searchMenusByKiosService(req) {
      ORDER BY created_at DESC`,
     [kiosId, `%${query}%`]
   );
-  return { status: 200, body: result.rows }; // array langsung
+  return { status: 200, body: result.rows }; 
 }
 
-/* === Detail menu (pembeli) === */
+// Detail menu (pembeli) 
 async function getMenuByIdForBuyerService(req) {
   const menuId = parseInt(req.params.id, 10);
   if (isNaN(menuId)) throw httpErr(400, 'ID menu tidak valid');
@@ -267,7 +257,7 @@ async function getMenuByIdForBuyerService(req) {
   );
   if (result.rowCount === 0) throw httpErr(404, 'Menu tidak ditemukan');
 
-  return { status: 200, body: result.rows[0] }; // object tunggal
+  return { status: 200, body: result.rows[0] }; 
 }
 
 module.exports = {

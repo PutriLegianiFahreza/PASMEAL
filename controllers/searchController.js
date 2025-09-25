@@ -1,4 +1,3 @@
-// controllers/searchController.js (thin controller)
 const { searchAllService } = require('../services/searchService');
 
 const searchAll = async (req, res) => {
@@ -7,7 +6,6 @@ const searchAll = async (req, res) => {
     return res.status(status).json(body);
   } catch (err) {
     if (err.status) return res.status(err.status).json({ message: err.message });
-    // eslint-disable-next-line no-console
     console.error('Gagal melakukan pencarian:', err);
     return res.status(500).json({ message: 'Terjadi kesalahan server' });
   }

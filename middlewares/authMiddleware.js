@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
 
+// token blacklist check untuk logout
 const isJtiBlacklisted = async (jti) => {
   if (!jti) return false;
   const { rowCount } = await pool.query(
@@ -20,6 +21,7 @@ const attachKiosId = async (user) => {
 
 const normalizeUser = (decoded) => ({ ...decoded, id: Number(decoded.id || decoded.penjual_id) });
 
+// token verification middleware (untuk routes yang butuh auth)
 const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ message: 'Token tidak ditemukan' });
@@ -43,6 +45,7 @@ const authMiddleware = async (req, res, next) => {
   }
 };
 
+//token verification + verified account middleware (untuk routes yang butuh auth + verified)
 const verifiedMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ message: 'Token tidak ditemukan' });

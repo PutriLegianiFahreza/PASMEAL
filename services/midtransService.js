@@ -1,9 +1,8 @@
-// services/midtransService.js
 const midtransClient = require('midtrans-client');
 const pool = require('../config/db');
 const { notifyPenjual } = require('../controllers/pesananController');
 
-// Inisialisasi Snap (dipertahankan sama)
+// Inisialisasi Snap 
 const snap = new midtransClient.Snap({
   isProduction: false,
   serverKey: process.env.MIDTRANS_SERVER_KEY,
@@ -74,7 +73,6 @@ async function createTransactionService(req) {
     };
   } catch (err) {
     if (err.status) throw err;
-    // eslint-disable-next-line no-console
     console.error(err);
     throw httpErr(500, "Gagal membuat transaksi");
   }
@@ -84,14 +82,12 @@ async function createTransactionService(req) {
 async function handleNotificationService(req) {
   try {
     const notif = req.body;
-    // eslint-disable-next-line no-console
     console.log("[MIDTRANS NOTIF RECEIVED]", notif);
 
     const orderId = notif.order_id;
     const transactionStatus = notif.transaction_status;
 
     const pesananId = parseInt(orderId.split('-')[1], 10);
-    // eslint-disable-next-line no-console
     console.log("[INFO] Pesanan ID:", pesananId);
 
     let statusUpdate;
@@ -102,7 +98,6 @@ async function handleNotificationService(req) {
     } else {
       statusUpdate = 'failed';
     }
-    // eslint-disable-next-line no-console
     console.log("[INFO] Status update:", statusUpdate);
 
     const updateQuery = `
@@ -128,7 +123,6 @@ async function handleNotificationService(req) {
       ),
       pesananId
     ]);
-    // eslint-disable-next-line no-console
     console.log("[INFO] Pesanan updated:", updateResult.rows[0]);
 
     if (statusUpdate === 'paid') {
@@ -141,18 +135,14 @@ async function handleNotificationService(req) {
       );
 
       if (pesananData.rows.length === 0) {
-        // eslint-disable-next-line no-console
         console.log("[WARN] Tidak ditemukan kios_id untuk pesanan", pesananId);
       } else {
         for (const row of pesananData.rows) {
-          // eslint-disable-next-line no-console
           console.log("[INFO] Mengirim WA ke kios_id:", row.kios_id, "menu:", row.nama_menu);
           try {
             await notifyPenjual(row.kios_id, pesananId);
-            // eslint-disable-next-line no-console
             console.log("[SUCCESS] WA dikirim ke kios_id:", row.kios_id);
           } catch (err) {
-            // eslint-disable-next-line no-console
             console.error("[ERROR] Gagal kirim WA ke kios_id:", row.kios_id, err);
           }
         }
@@ -162,7 +152,6 @@ async function handleNotificationService(req) {
     return { status: 200, body: { message: "Notifikasi diproses" } };
   } catch (err) {
     if (err.status) throw err;
-    // eslint-disable-next-line no-console
     console.error("[NOTIFICATION ERROR]", err);
     throw httpErr(500, "Gagal memproses notifikasi");
   }

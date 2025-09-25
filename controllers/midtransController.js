@@ -1,4 +1,3 @@
-// controllers/midtransController.js (thin controller)
 const {
   createTransactionService,
   handleNotificationService,
@@ -11,7 +10,6 @@ const createTransaction = async (req, res) => {
     return res.status(status).json(body);
   } catch (err) {
     if (err.status) return res.status(err.status).json({ message: err.message });
-    // eslint-disable-next-line no-console
     console.error(err);
     return res.status(500).json({ message: "Gagal membuat transaksi" });
   }
@@ -24,7 +22,6 @@ const handleNotification = async (req, res) => {
     return res.status(status).json(body);
   } catch (err) {
     if (err.status) return res.status(err.status).json({ message: err.message });
-    // eslint-disable-next-line no-console
     console.error("[NOTIFICATION ERROR]", err);
     return res.status(500).json({ message: "Gagal memproses notifikasi" });
   }
